@@ -91,7 +91,7 @@ export function initCommand(projectDir: string): string {
 	const dir = join(projectDir, ".claude");
 	const path = join(dir, "fusion.json");
 	const example = JSON.stringify(generateConfigExample(), null, 2);
-	if (existsSync(path)) return `${path} already exists; not overwriting. Example config:\n${example}`;
+	if (existsSync(path)) return `${path} already exists. Not overwriting. Example config:\n${example}`;
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(path, example + "\n");
 	return `Wrote ${path}. Edit the panel and judge ids, and set OPENROUTER_API_KEY in your shell for openrouter/* models.`;
