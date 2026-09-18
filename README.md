@@ -133,13 +133,21 @@ The report from `/fusion-report` adds every panelist's full response underneath,
 
 `.claude/fusion.json` in the project wins over `~/.claude/fusion.json`. A project file can set `panelToolsConsent`, so glance at it in repos you clone before enabling `all`.
 
-Model ids carry their backend:
+Model ids carry their backend. What each backend accepts, and which config keys reach it:
 
-- `claude/<model>`: runs `claude -p` on your Claude Code login. `opus`, `sonnet`, `haiku` and full model ids all work.
-- `codex/<model>`: runs `codex exec` on your ChatGPT login. The model must be one your plan offers in Codex (an unsupported id fails at call time with the CLI's message). Text only. Your `~/.codex/config.toml`, rules and MCP servers are not loaded for panel calls.
-- `openrouter/<vendor>/<model>`: an OpenRouter id such as `openrouter/openai/gpt-5.5`. Text only.
+| | `claude/…` | `codex/…` | `openrouter/…` |
+| --- | --- | --- | --- |
+| Id format | `claude/<alias or model id>` | `codex/<model slug>` | `openrouter/<vendor>/<model>` |
+| Examples | `claude/opus`, `claude/sonnet`, `claude/haiku`, `claude/claude-opus-5` | `codex/gpt-5.5`, `codex/gpt-5.6-terra` | `openrouter/openai/gpt-5.5`, `openrouter/google/gemini-3.8-flash` |
+| Runs as | `claude -p` on your Claude Code login | `codex exec` on your ChatGPT login | HTTPS call billed to your OpenRouter account |
+| Needs | `claude` on `PATH` | `codex` on `PATH`, `codex login` done | `OPENROUTER_API_KEY` |
+| Which models work | Any alias or id your Claude Code login accepts (`claude --help` lists the aliases under `--model`) | Slugs in your account's catalog: `codex debug models` prints them with the reasoning levels each supports | Any id on [openrouter.ai/models](https://openrouter.ai/models) |
+| `panelReasoning`, `judgeReasoning` | `low` to `max`, passed as `--effort`. `minimal` runs as `low`. | Levels the slug supports, passed as `-c model_reasoning_effort`. `minimal` runs as `low`. A level the slug lacks fails with the CLI's message. | Any level, sent as `reasoning.effort`. If the model rejects it (HTTP 400) the call retries without reasoning and the report carries a warning. |
+| `maxPanelOutputTokens`, `maxCompletionTokens` | Ignored. `claude -p` fails the whole call rather than truncating when a cap is hit, so panelists run under Claude Code's own limit. | Ignored, the CLI has no flag for it | Applied as `max_tokens` |
+| `temperature` | Ignored, no flag | Ignored, no flag | Applied |
+| `panelTools`, `maxToolCalls` | Applied | Ignored, text only | Ignored, text only |
 
-OpenAI models are the one case with two routes, and the prefix is the whole choice. `codex/gpt-5.5` needs the Codex CLI on `PATH` and logged in. `openrouter/openai/gpt-5.5` needs `OPENROUTER_API_KEY`. Nothing falls back from one to the other: a panel that lists `codex/gpt-5.5` on a machine without the CLI reports that panelist as failed and the rest of the panel runs. A panel may list both if you want the same model through both routes.
+OpenAI models are the one case with two routes, and the prefix is the whole choice. Nothing falls back from one to the other: a panel that lists `codex/gpt-5.5` on a machine without the CLI reports that panelist as failed and the rest of the panel runs. A panel may list both if you want the same model through both routes.
 
 What `/fusion-init` writes:
 
@@ -168,11 +176,11 @@ What `/fusion-init` writes:
 | --- | --- |
 | `panels`, `defaultPanel` | Named panels and which one applies by default. Top-level `panel` and `judge` are the fallback when no named panel resolves. |
 | `judge` | Any model id. Omit it and the first panelist judges. |
-| `panelReasoning`, `judgeReasoning` | `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Claude and Codex models run `minimal` as `low`. A Codex model that lacks a level (`gpt-5.5` stops at `xhigh`) fails with the CLI's message. |
+| `panelReasoning`, `judgeReasoning` | `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Which levels each backend honours is in the table above. |
 | `maxPanelModels` | Cap on panel size, up to 8. |
-| `maxPanelOutputTokens`, `maxCompletionTokens` | OpenRouter models only. Claude models run under Claude Code's own output limit, because `claude -p` fails the whole call rather than truncating when a cap is hit. Codex models run under the CLI's own limit, which has no flag. |
-| `temperature` | OpenRouter models only. Neither CLI exposes it. |
-| `panelTools` | `none`, `readonly` (`Read,Grep,Glob`), `all` (adds `Bash,Edit,Write`), or an explicit list. Claude panelists only. |
+| `maxPanelOutputTokens`, `maxCompletionTokens` | Output cap per panel call and per judge call. OpenRouter only. |
+| `temperature` | OpenRouter only. |
+| `panelTools` | `none`, `readonly` (`Read,Grep,Glob`), `all` (adds `Bash,Edit,Write`), or an explicit list. |
 | `panelToolsConsent` | Must be `true` before `Bash`, `Edit` or `Write` are given to panelists. |
 | `maxToolCalls` | Passed to `claude -p --max-turns`, so it bounds model turns rather than tool calls. A panelist that hits it is reported as capped and its last message becomes its answer. |
 | `timeoutSeconds` | Per model call, default 600. A panelist that exceeds it fails with `timed out`. |
