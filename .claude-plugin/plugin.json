@@ -1,6 +1,6 @@
 {
 	"name": "claude-fusion",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "Multi-model deliberation: run a prompt against a panel of models and get a judge's structured comparison.",
 	"author": { "name": "callumw-k" },
 	"repository": "https://github.com/callumw-k/claude-fusion",
