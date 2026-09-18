@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	FORCE_CONTEXT,
+	detectClis,
 	fusionCommand,
 	hookOutput,
 	initCommand,
@@ -95,6 +96,39 @@ test("initCommand writes the example once and never overwrites", () => {
 		eq(existsSync(join(dir, ".claude", "fusion.json")), true, "still there");
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("initCommand seats detected CLIs and only hints at OPENROUTER_API_KEY when a seat needs it", () => {
+	const dir = mkdtempSync(join(tmpdir(), "claude-fusion-init-"));
+	const savedKey = process.env.OPENROUTER_API_KEY;
+	delete process.env.OPENROUTER_API_KEY;
+	try {
+		const local = initCommand(dir, { codex: true, agy: true });
+		if (local.includes("OPENROUTER_API_KEY")) throw new Error(local);
+		if (!local.includes("codex/gpt-5.6-terra") || !local.includes("agy/gemini-3.8-flash")) throw new Error(local);
+		const written = JSON.parse(readFileSync(join(dir, ".claude", "fusion.json"), "utf8")) as FusionConfig;
+		eq(written.panels?.default.models, ["claude/opus", "codex/gpt-5.6-terra", "agy/gemini-3.8-flash"], "CLI seats written");
+		rmSync(join(dir, ".claude"), { recursive: true, force: true });
+		const mixed = initCommand(dir, { codex: true, agy: false });
+		if (!mixed.includes("OPENROUTER_API_KEY")) throw new Error(mixed);
+		if (!mixed.includes("agy CLI not found")) throw new Error(mixed);
+	} finally {
+		if (savedKey !== undefined) process.env.OPENROUTER_API_KEY = savedKey;
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("detectClis finds executables on PATH by name", () => {
+	const bin = mkdtempSync(join(tmpdir(), "claude-fusion-bin-"));
+	const savedPath = process.env.PATH;
+	try {
+		writeFileSync(join(bin, "agy"), "#!/bin/sh\n", { mode: 0o755 });
+		process.env.PATH = bin;
+		eq(detectClis(), { codex: false, agy: true }, "only agy present");
+	} finally {
+		process.env.PATH = savedPath;
+		rmSync(bin, { recursive: true, force: true });
 	}
 });
 

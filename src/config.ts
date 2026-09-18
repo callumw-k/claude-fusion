@@ -216,12 +216,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function generateConfigExample(): FusionConfig {
+export interface InstalledClis {
+	codex: boolean;
+	agy: boolean;
+}
+
+export function generateConfigExample(clis: InstalledClis = { codex: false, agy: false }): FusionConfig {
 	return {
 		defaultPanel: "default",
 		panels: {
 			default: {
-				models: ["claude/opus", "openrouter/openai/gpt-5.5", "openrouter/google/gemini-3.8-flash"],
+				models: [
+					"claude/opus",
+					clis.codex ? "codex/gpt-5.6-terra" : "openrouter/openai/gpt-5.5",
+					clis.agy ? "agy/gemini-3.8-flash" : "openrouter/google/gemini-3.8-flash",
+				],
 				judge: "claude/opus",
 				panelReasoning: "medium",
 				judgeReasoning: "high",

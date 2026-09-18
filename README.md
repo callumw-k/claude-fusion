@@ -43,11 +43,11 @@ Panel models can be Claude (through your Claude Code login), OpenAI models throu
    /fusion-init
    ```
 
-   This writes `.claude/fusion.json` in the project with a three-model panel (Claude Opus, GPT 5.5 and Gemini 3.8 Flash through OpenRouter) judged by Opus. Edit the model list to taste. Without an OpenRouter key, keep only `claude/*` entries. With the Codex CLI logged in to ChatGPT, `codex/*` can take the OpenAI seat instead, and with the Antigravity CLI logged in, `agy/*` can take the Gemini seat, for example:
+   This writes `.claude/fusion.json` in the project with a three-model panel (Claude Opus, an OpenAI model and a Gemini model) judged by Opus. The OpenAI seat is `codex/gpt-5.6-terra` when the Codex CLI is on `PATH` and `openrouter/openai/gpt-5.5` otherwise. The Gemini seat is `agy/gemini-3.8-flash` when the Antigravity CLI is on `PATH` and `openrouter/google/gemini-3.8-flash` otherwise. The output names any CLI it could not find. Edit the model list to taste. Without an OpenRouter key or either CLI, keep only `claude/*` entries. With both CLIs logged in the file looks like:
 
    ```json
    {
-     "panel": ["claude/opus", "codex/gpt-5.5", "agy/gemini-3.8-flash"],
+     "panel": ["claude/opus", "codex/gpt-5.6-terra", "agy/gemini-3.8-flash"],
      "judge": "claude/opus"
    }
    ```

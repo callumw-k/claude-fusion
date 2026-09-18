@@ -208,6 +208,13 @@ test("generated config uses a resolvable named default panel with both backends"
 	}
 });
 
+test("generated config seats installed CLIs instead of OpenRouter", () => {
+	eq(generateConfigExample({ codex: true, agy: true }).panels?.default.models, ["claude/opus", "codex/gpt-5.6-terra", "agy/gemini-3.8-flash"], "both CLIs");
+	eq(generateConfigExample({ codex: true, agy: false }).panels?.default.models, ["claude/opus", "codex/gpt-5.6-terra", "openrouter/google/gemini-3.8-flash"], "codex only");
+	eq(generateConfigExample({ codex: false, agy: true }).panels?.default.models, ["claude/opus", "openrouter/openai/gpt-5.5", "agy/gemini-3.8-flash"], "agy only");
+	eq(generateConfigExample({ codex: false, agy: false }).panels?.default.models, ["claude/opus", "openrouter/openai/gpt-5.5", "openrouter/google/gemini-3.8-flash"], "neither");
+});
+
 test("loadConfigWithPath prefers the project file and reports the path", () => {
 	const project = mkdtempSync(join(tmpdir(), "claude-fusion-config-"));
 	try {

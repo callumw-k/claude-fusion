@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { modelDisplay } from "./backends/registry.ts";
-import { configPaths, generateConfigExample, loadConfigWithPath } from "./config.ts";
+import { configPaths, generateConfigExample, loadConfigWithPath, type InstalledClis } from "./config.ts";
 import { resolveFusionSelection } from "./fusion.ts";
 import { clearState, readState, resolveSessionId, stateDir, writeCurrentSession, writeState, type SessionState } from "./state.ts";
 import { clampMaxToolCalls, selectionLabel } from "./tools.ts";
@@ -77,15 +77,26 @@ export function statusText(state: SessionState, config: FusionConfig, configPath
 	return lines.join("\n");
 }
 
-export function initCommand(projectDir: string): string {
+export function detectClis(): InstalledClis {
+	const dirs = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+	const onPath = (name: string) => dirs.some((dir) => existsSync(join(dir, name)));
+	return { codex: onPath("codex"), agy: onPath("agy") };
+}
+
+export function initCommand(projectDir: string, clis: InstalledClis = detectClis()): string {
 	const dir = join(projectDir, ".claude");
 	const path = join(dir, "fusion.json");
-	const example = JSON.stringify(generateConfigExample(), null, 2);
+	const config = generateConfigExample(clis);
+	const example = JSON.stringify(config, null, 2);
 	if (existsSync(path)) return `${path} already exists. Not overwriting. Example config:\n${example}`;
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(path, example + "\n");
-	const keyHint = process.env.OPENROUTER_API_KEY ? "" : " OPENROUTER_API_KEY is not set: set it in your shell for openrouter/* models.";
-	return `Wrote ${path}. Edit the panel and judge ids.${keyHint}`;
+	const models = config.panels?.default.models ?? [];
+	const missing = (["codex", "agy"] as const).filter((name) => !clis[name]).map((name) => `${name} CLI not found`);
+	const detection = missing.length ? ` (${missing.join(", ")})` : "";
+	const needsKey = models.some((id) => id.startsWith("openrouter/")) && !process.env.OPENROUTER_API_KEY;
+	const keyHint = needsKey ? " OPENROUTER_API_KEY is not set: set it in your shell for openrouter/* models." : "";
+	return `Wrote ${path}. Panel: ${models.join(", ")}${detection}. Edit the panel and judge ids.${keyHint}`;
 }
 
 export interface HookInput {
