@@ -1,5 +1,6 @@
 ---
 description: "Write an example .claude/fusion.json into the current project"
+allowed-tools: Bash(node:*)
 ---
 !`node "${CLAUDE_PLUGIN_ROOT}/src/cli.ts" init`
 

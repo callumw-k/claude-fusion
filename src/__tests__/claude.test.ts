@@ -152,6 +152,11 @@ test("parseClaudeOutput keeps a max-turns answer as a capped success", () => {
 		text: "",
 		tools: { turns: 3, tool_calls: [], capped: true },
 	}, "a silent cap keeps its turn usage so fusion can report no text answer");
+	const emptyResult = streamLines([
+		{ type: "assistant", message: { content: [{ type: "text", text: "spoken before the cap" }] } },
+		{ ...cappedResult, result: "" },
+	]);
+	eq(parseClaudeOutput(emptyResult, "", 1, { tools: ["Read"], maxToolCalls: 3 }).text, "spoken before the cap", "an empty result string does not hide the spoken text");
 	const noTools = attempt(() => parseClaudeOutput(JSON.stringify(cappedResult), "", 1, { tools: [], maxToolCalls: 16 })) as Error;
 	if (!noTools.message.includes("error_max_turns")) throw new Error(`without tools an empty max-turns result must fail: ${noTools.message}`);
 	const success = streamLines([

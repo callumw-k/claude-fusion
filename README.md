@@ -71,6 +71,8 @@ Model ids carry their backend:
 
 The `/fusion <prompt>` text reaches the plugin through a quoted heredoc, so quotes, backticks and `$` in the prompt are passed through literally and never expanded by the shell.
 
+When the plugin is loaded with `--plugin-dir`, the commands are namespaced: use `/claude-fusion:fusion`, `/claude-fusion:fusion-status` and so on if the bare names do not resolve.
+
 ## How the Claude backend keeps costs down
 
 Each Claude panelist is a `claude -p` call with `--system-prompt`, `--strict-mcp-config`, `--setting-sources ""` and `--tools` restricted, so it does not load your plugins, skills, MCP servers or `CLAUDE.md`. Measured: a trivial call drops from about 39k input tokens to under 400.

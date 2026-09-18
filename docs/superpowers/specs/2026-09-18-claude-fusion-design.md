@@ -127,7 +127,7 @@ Spawns `claude` with:
 
 The prompt goes on stdin. `cwd` is the project directory. Measured in this session: the flag set above brings a haiku "pong" call from ~39k input tokens (full Claude Code system prompt, plugins, skills, MCP) down to 374. Every flag in that list is load-bearing for cost and must stay.
 
-Output parsing: `--output-format json` when no tools are requested, `--output-format stream-json --verbose` when they are, so the assistant's text blocks are visible. `is_error: true` or a non-zero exit, or `subtype !== "success"`, throws with the `result` text (which carries auth/billing errors) so `classifyAllPanelFailure` can match on it. The one exception is `subtype: "error_max_turns"`: Claude Code drops `result` when the turn cap is hit, so the backend returns the last assistant text (possibly empty) with `capped: true`, and `emptyPanelError` in `fusion.ts` turns an empty one into "no text answer (tool-call budget or loop guard hit)" with the turn usage attached, as pi-fusion does. `structured_output` populates `CallResult.structured`. `num_turns` populates `PanelToolUsage.turns`. Individual tool calls are not visible in either output format, so `tool_calls` is empty for this backend and the report says so.
+Output parsing: `--output-format json` when no tools are requested, `--output-format stream-json --verbose` when they are, so the assistant's text blocks are visible. `is_error: true` or a non-zero exit, or `subtype !== "success"`, throws with the `result` text (which carries auth/billing errors) so `classifyAllPanelFailure` can match on it. The one exception is `subtype: "error_max_turns"`: Claude Code drops `result` when the turn cap is hit, so the backend returns the last assistant text (possibly empty) with `capped: true`, and `emptyPanelError` in `fusion.ts` turns an empty one into "no text answer (tool-call budget or loop guard hit)" with the turn usage attached, as pi-fusion does. `structured_output` populates `CallResult.structured`. `num_turns` populates `PanelToolUsage.turns`, and a normal success is also marked `capped` when `num_turns` reaches `maxToolCalls`. Individual tool calls are not visible in either output format, so `tool_calls` is empty for this backend and the report says so.
 
 Output caps: `maxPanelOutputTokens` and `maxCompletionTokens` are not applied to Claude calls. Setting `CLAUDE_CODE_MAX_OUTPUT_TOKENS` on the child makes an overrun a hard API error ("response exceeded the N output token maximum"), and thinking tokens share that budget, so the defaults failed real calls at `medium` and `high` reasoning. Claude panelists and judges run under Claude Code's own output limit. The two knobs apply to OpenRouter models only.
 
@@ -248,7 +248,7 @@ Session id sources:
 All hooks are `{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/cli.ts", "hook", "<event>"] }`.
 
 - `UserPromptSubmit`: read state. If `mode !== "forced"`, exit 0 with no output. If the prompt is blank or starts with `/`, exit 0. Otherwise output `hookSpecificOutput.additionalContext` set to `FORCE_CONTEXT`, a fixed instruction telling Claude to call the fusion tool with the user's request before answering and then write the answer itself. `UserPromptSubmit` cannot rewrite the prompt (Claude Code only accepts `additionalContext` or a block decision, and any other shape shows a hook error on every prompt).
-- `PreToolUse` with matcher `mcp__plugin_claude_fusion_fusion__fusion|mcp__plugin_claude_fusion_fusion__fusion_report` (exact scoped names confirmed at implementation): if `mode === "off"`, output `permissionDecision: "deny"` with reason "Fusion is off for this session. Use /fusion available or /fusion on to re-enable it."
+- `PreToolUse` with matcher `mcp__plugin_claude[-_]fusion_fusion__fusion(_report)?` (the live scoped name is `mcp__plugin_claude-fusion_fusion__fusion`): if `mode === "off"`, output `permissionDecision: "deny"` with reason "Fusion is off for this session. Use /fusion available or /fusion on to re-enable it."
 - `SessionEnd`: `clearState(session_id)`.
 
 A hook that cannot read or write its state directory exits 0 silently: `hookOutput` in `cli.ts` wraps all state I/O and returns nothing on failure. Hooks never block on error.
@@ -261,17 +261,18 @@ Each command's body starts with an inline script, then a one-line instruction. E
 ---
 description: "Fusion mode: /fusion on | available | off, /fusion <panel-name> arms a panel once, /fusion <prompt> forces one fusion call"
 argument-hint: "[on|available|off|<panel-name>|<prompt>]"
+allowed-tools: Bash(node:*)
 ---
 ```!
-node "${CLAUDE_PLUGIN_ROOT}/src/cli.ts" fusion <<'FUSION_ARGS'
+node "${CLAUDE_PLUGIN_ROOT}/src/cli.ts" fusion <<'CLAUDE_FUSION_ARGUMENTS_END_7f3a'
 $ARGUMENTS
-FUSION_ARGS
+CLAUDE_FUSION_ARGUMENTS_END_7f3a
 ```
 
 Follow the instruction printed above exactly. If it contains a prompt to run, call the fusion tool with that prompt, then answer the user in your own words without pasting the raw JSON.
 ````
 
-`$ARGUMENTS` is substituted textually before the shell runs, so it must never sit inside a shell expression: `"$ARGUMENTS"` on a `!` line would let backticks or `$(...)` in a prompt execute. The fenced ```` ```! ```` block is Claude Code's multi-line inline-shell form, and the quoted heredoc delivers the text on stdin with no expansion. `cli.ts fusion` reads its argument from argv when present, otherwise from stdin (trimmed, empty meaning the toggle case). `fusion-status.md` and `fusion-init.md` use the single-line form, which requires backticks: `` !`node "${CLAUDE_PLUGIN_ROOT}/src/cli.ts" status` ``. Verified in Claude Code 2.1.276: a bare `!node ...` line is not pre-executed at all, and under the `auto` permission mode an inline command that would need a permission prompt is handed to the model to run itself, with the text intact.
+`$ARGUMENTS` is substituted textually before the shell runs, so it must never sit inside a shell expression: `"$ARGUMENTS"` on a `!` line would let backticks or `$(...)` in a prompt execute. The fenced ```` ```! ```` block is Claude Code's multi-line inline-shell form, and the quoted heredoc delivers the text on stdin with no expansion. `cli.ts fusion` reads its argument from argv when present, otherwise from stdin (trimmed, empty meaning the toggle case). The heredoc delimiter is deliberately long and random-suffixed so no prompt line will match it and end the block early. All three pre-executed commands declare `allowed-tools: Bash(node:*)`; without it the default permission mode refuses the inline command and the invocation aborts. `fusion-status.md` and `fusion-init.md` use the single-line form, which requires backticks: `` !`node "${CLAUDE_PLUGIN_ROOT}/src/cli.ts" status` ``. Verified in Claude Code 2.1.276: a bare `!node ...` line is not pre-executed at all, and under the `auto` permission mode an inline command that would need a permission prompt is handed to the model to run itself, with the text intact.
 
 `cli.ts fusion <args>` decides, in this order, mirroring pi-fusion's `/fusion` handler:
 

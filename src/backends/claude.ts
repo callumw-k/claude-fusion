@@ -99,7 +99,7 @@ export function parseClaudeOutput(
 	}
 	const toolsRequested = options.tools.length > 0;
 	const hitMaxTurns = parsed.subtype === "error_max_turns";
-	const text = parsed.result ?? (hitMaxTurns ? spoken : "");
+	const text = parsed.result || (hitMaxTurns ? spoken : "");
 	const cappedWithAnswer = hitMaxTurns && (toolsRequested || text.trim().length > 0);
 	if (!cappedWithAnswer && (exitCode !== 0 || parsed.is_error || parsed.subtype !== "success")) {
 		throw new Error(text.trim() || stderr.trim() || `claude -p failed (exit ${exitCode ?? "null"}, ${parsed.subtype ?? "unknown"})`);
