@@ -68,7 +68,7 @@ Model ids carry their backend:
 - `/fusion-report <prompt>` prints the full report: the analysis plus every panel response.
 - `/fusion-status` shows the mode, config file, resolved panel and judge.
 
-Quotes inside a `/fusion <prompt>` argument are passed through the shell. Avoid double quotes, or use `/fusion-report`.
+The `/fusion <prompt>` text reaches the plugin through a quoted heredoc, so quotes, backticks and `$` in the prompt are passed through literally and never expanded by the shell.
 
 ## How the Claude backend keeps costs down
 

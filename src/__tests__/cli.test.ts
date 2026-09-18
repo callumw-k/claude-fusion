@@ -7,6 +7,7 @@ import {
 	initCommand,
 	parseModeWord,
 	preToolUseHook,
+	readArgument,
 	statusText,
 	userPromptSubmitHook,
 	type CommandContext,
@@ -32,6 +33,13 @@ test("parseModeWord accepts the pi-fusion aliases", () => {
 	eq(parseModeWord("auto"), "available", "auto");
 	eq(parseModeWord("disabled"), "off", "disabled");
 	eq(parseModeWord("hello"), undefined, "not a mode");
+});
+
+test("readArgument prefers argv and falls back to trimmed stdin", () => {
+	eq(readArgument(["on"], "ignored"), "on", "argv wins");
+	eq(readArgument([], "compare `a` and $(b)\n"), "compare `a` and $(b)", "stdin kept verbatim apart from trimming");
+	eq(readArgument([], "\n"), "", "empty heredoc means toggle");
+	eq(readArgument([], ""), "", "no stdin means toggle");
 });
 
 test("/fusion with no args toggles available and forced, requiring a panel for forced", () => {

@@ -113,9 +113,14 @@ export function preToolUseHook(state: SessionState): Record<string, unknown> | u
 }
 
 async function readStdin(): Promise<string> {
+	if (process.stdin.isTTY) return "";
 	let data = "";
 	for await (const chunk of process.stdin) data += chunk;
 	return data;
+}
+
+export function readArgument(argv: string[], stdinText: string): string {
+	return (argv.length ? argv.join(" ") : stdinText).trim();
 }
 
 async function runHook(event: string | undefined): Promise<void> {
@@ -161,7 +166,8 @@ export async function main(argv: string[]): Promise<void> {
 		return;
 	}
 	if (command === "fusion") {
-		console.log(fusionCommand(rest.join(" "), { state, config, setState: (patch) => void writeState(sessionId, patch) }));
+		const args = readArgument(rest, rest.length ? "" : await readStdin());
+		console.log(fusionCommand(args, { state, config, setState: (patch) => void writeState(sessionId, patch) }));
 		return;
 	}
 	console.error(`Unknown command: ${command ?? "(none)"}. Expected hook | init | status | fusion.`);
