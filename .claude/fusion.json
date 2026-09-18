@@ -1,0 +1,22 @@
+{
+  "defaultPanel": "default",
+  "panels": {
+    "default": {
+      "models": [
+        "claude/opus",
+        "openrouter/openai/gpt-5.5",
+        "openrouter/google/gemini-3.8-flash"
+      ],
+      "judge": "claude/opus",
+      "panelReasoning": "medium",
+      "judgeReasoning": "high"
+    }
+  },
+  "maxPanelModels": 3,
+  "maxPanelOutputTokens": 2048,
+  "maxCompletionTokens": 4096,
+  "temperature": 0.3,
+  "panelTools": "none",
+  "maxToolCalls": 16,
+  "timeoutSeconds": 600
+}
