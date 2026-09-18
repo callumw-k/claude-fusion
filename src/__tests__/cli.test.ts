@@ -2,8 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-	FORCE_PREAMBLE,
-	forceFusionPrompt,
+	FORCE_CONTEXT,
 	fusionCommand,
 	initCommand,
 	parseModeWord,
@@ -33,14 +32,6 @@ test("parseModeWord accepts the pi-fusion aliases", () => {
 	eq(parseModeWord("auto"), "available", "auto");
 	eq(parseModeWord("disabled"), "off", "disabled");
 	eq(parseModeWord("hello"), undefined, "not a mode");
-});
-
-test("forceFusionPrompt wraps once and is idempotent", () => {
-	const forced = forceFusionPrompt("what is x?");
-	if (!forced.startsWith(FORCE_PREAMBLE)) throw new Error("missing preamble");
-	if (!forced.endsWith("\n\nwhat is x?")) throw new Error("prompt not appended");
-	if (forced.includes("context_mode")) throw new Error("pi-only instruction leaked");
-	eq(forceFusionPrompt(forced), forced, "idempotent");
 });
 
 test("/fusion with no args toggles available and forced, requiring a panel for forced", () => {
@@ -98,14 +89,14 @@ test("initCommand writes the example once and never overwrites", () => {
 	}
 });
 
-test("userPromptSubmitHook rewrites only plain prompts in forced mode", () => {
+test("userPromptSubmitHook adds context only for plain prompts in forced mode", () => {
 	eq(userPromptSubmitHook({ prompt: "hi" }, { mode: "available" }), undefined, "not forced");
 	eq(userPromptSubmitHook({ prompt: "/fusion off" }, { mode: "forced" }), undefined, "commands pass");
 	eq(userPromptSubmitHook({ prompt: "   " }, { mode: "forced" }), undefined, "blank passes");
-	eq(userPromptSubmitHook({ prompt: forceFusionPrompt("x") }, { mode: "forced" }), undefined, "already forced passes");
-	eq(userPromptSubmitHook({ prompt: "hi" }, { mode: "forced" }), {
-		hookSpecificOutput: { hookEventName: "UserPromptSubmit", updatedInput: { prompt: forceFusionPrompt("hi") } },
-	}, "rewritten");
+	const output = userPromptSubmitHook({ prompt: "hi" }, { mode: "forced" });
+	eq(output, { hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: FORCE_CONTEXT } }, "context added");
+	if (JSON.stringify(output).includes("updatedInput")) throw new Error("UserPromptSubmit cannot rewrite the prompt");
+	if (!FORCE_CONTEXT.includes("call the fusion tool")) throw new Error("context must instruct a fusion call");
 });
 
 test("preToolUseHook denies only when off", () => {

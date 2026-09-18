@@ -8,22 +8,12 @@ import { clearState, readState, resolveSessionId, writeCurrentSession, writeStat
 import { clampMaxToolCalls, selectionLabel } from "./tools.ts";
 import type { FusionConfig, FusionMode } from "./types.ts";
 
-export const FORCE_PREAMBLE = "Use the fusion tool for the following prompt before answering.";
-
-export function isForcedPrompt(text: string): boolean {
-	return text.trimStart().startsWith(FORCE_PREAMBLE);
-}
-
-export function forceFusionPrompt(prompt: string): string {
-	if (isForcedPrompt(prompt)) return prompt;
-	return [
-		FORCE_PREAMBLE,
-		"After the fusion tool returns, write the final answer yourself in your normal assistant voice.",
-		"Do not simply paste the fusion JSON or raw panel responses unless the user explicitly asks for diagnostics.",
-		"",
-		prompt,
-	].join("\n");
-}
+export const FORCE_CONTEXT = [
+	"Fusion forced mode is on for this session.",
+	"Before answering, call the fusion tool with the user's request as the prompt (include any conversation context the panel needs).",
+	"After it returns, write the final answer yourself in your normal assistant voice.",
+	"Do not paste the fusion JSON or raw panel responses unless the user asks for diagnostics.",
+].join(" ");
 
 export function parseModeWord(word: string): FusionMode | undefined {
 	const lower = word.trim().toLowerCase();
@@ -107,8 +97,8 @@ export interface HookInput {
 export function userPromptSubmitHook(input: HookInput, state: SessionState): Record<string, unknown> | undefined {
 	const prompt = input.prompt ?? "";
 	if (state.mode !== "forced") return undefined;
-	if (!prompt.trim() || prompt.trimStart().startsWith("/") || isForcedPrompt(prompt)) return undefined;
-	return { hookSpecificOutput: { hookEventName: "UserPromptSubmit", updatedInput: { prompt: forceFusionPrompt(prompt) } } };
+	if (!prompt.trim() || prompt.trimStart().startsWith("/")) return undefined;
+	return { hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: FORCE_CONTEXT } };
 }
 
 export function preToolUseHook(state: SessionState): Record<string, unknown> | undefined {
