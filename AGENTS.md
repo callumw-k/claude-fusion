@@ -17,6 +17,7 @@ claude-fusion is a Claude Code plugin: a `fusion` MCP tool runs a prompt against
 - `src/backends/` has one implementation per model id prefix: `claude/*` spawns `claude -p` (`claude.ts`), `openrouter/*` calls the OpenRouter HTTP API (`openrouter.ts`). `registry.ts` parses ids. The `Backend` interface is in `backends/types.ts`.
 - `src/config.ts` reads `<project>/.claude/fusion.json` then `~/.claude/fusion.json`. Panel and judge are always user configuration. The `fusion` tool exposes only `prompt`.
 - `src/state.ts` keeps per-session mode (`available`/`forced`/`off`) and an armed named panel in `~/.claude/claude-fusion/sessions/<session_id>.json` (`FUSION_DATA_DIR` overrides the directory). Hooks get the session id from stdin. The server and commands read `CLAUDE_CODE_SESSION_ID`, falling back to the `current-session` pointer the `UserPromptSubmit` hook writes.
+- `.claude-plugin/plugin.json` deliberately has no `hooks` key: Claude Code 2.1.276 auto-loads `hooks/hooks.json`, so don't add one.
 
 ## Conventions
 
