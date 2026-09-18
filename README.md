@@ -52,6 +52,7 @@ Model ids carry their backend:
 | --- | --- |
 | `panels`, `defaultPanel` | Named panels. `panel` and `judge` at the top level are the legacy fallback. |
 | `panelReasoning`, `judgeReasoning` | `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Claude models run `minimal` as `low`. |
+| `maxPanelOutputTokens`, `maxCompletionTokens` | OpenRouter models only. Claude panelists and judges run under Claude Code's own output limit, because `claude -p` fails the whole call rather than truncating when a cap is exceeded, and thinking shares that budget. |
 | `temperature` | OpenRouter models only. `claude -p` does not accept one. |
 | `panelTools` | `none`, `readonly` (`Read,Grep,Glob`), `all` (adds `Bash,Edit,Write`), or a list. Claude panelists only. |
 | `panelToolsConsent` | Must be `true` for `all` or any list containing `Bash`, `Edit` or `Write`. Mutating panels run one model at a time. |

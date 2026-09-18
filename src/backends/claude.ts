@@ -77,11 +77,15 @@ export function parseClaudeOutput(
 	};
 }
 
+export function buildChildEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+	return { ...env };
+}
+
 function runClaude(spawnImpl: SpawnLike, ref: ModelRef, options: CallOptions): Promise<CallResult> {
 	return new Promise((resolve, reject) => {
 		const child = spawnImpl("claude", buildClaudeArgs(ref, options), {
 			cwd: options.cwd,
-			env: { ...process.env, CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(options.maxTokens) },
+			env: buildChildEnv(process.env),
 			stdio: ["pipe", "pipe", "pipe"],
 		});
 		let stdout = "";

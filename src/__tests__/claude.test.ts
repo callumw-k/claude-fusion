@@ -1,9 +1,39 @@
-import { buildClaudeArgs, claudeReasoning, createClaudeBackend, parseClaudeOutput } from "../backends/claude.ts";
+import { EventEmitter } from "node:events";
+import { buildChildEnv, buildClaudeArgs, claudeReasoning, createClaudeBackend, parseClaudeOutput, type SpawnLike } from "../backends/claude.ts";
 import type { CallOptions } from "../backends/types.ts";
 import { parseModelRef } from "../backends/registry.ts";
 import { eq, test } from "./_harness.ts";
 
 const ref = parseModelRef("claude/opus")!;
+
+interface FakeSpawn {
+	spawn: SpawnLike;
+	calls: Array<{ args: string[]; env: NodeJS.ProcessEnv | undefined }>;
+	kills: string[];
+}
+
+function fakeSpawn(stdout?: string): FakeSpawn {
+	const record: FakeSpawn = { calls: [], kills: [], spawn: undefined as unknown as SpawnLike };
+	record.spawn = ((_cmd: string, args: readonly string[], opts: { env?: NodeJS.ProcessEnv }) => {
+		record.calls.push({ args: [...args], env: opts.env });
+		const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; stdin: EventEmitter & { end(): void }; kill(signal: string): boolean };
+		child.stdout = new EventEmitter();
+		child.stderr = new EventEmitter();
+		child.stdin = Object.assign(new EventEmitter(), { end() {} });
+		child.kill = (signal: string) => {
+			record.kills.push(signal);
+			return true;
+		};
+		if (stdout !== undefined) {
+			setImmediate(() => {
+				child.stdout.emit("data", stdout);
+				child.emit("close", 0);
+			});
+		}
+		return child;
+	}) as unknown as SpawnLike;
+	return record;
+}
 
 function options(overrides: Partial<CallOptions> = {}): CallOptions {
 	return {
@@ -65,6 +95,15 @@ test("claudeReasoning maps minimal to low with a warning and passes the rest thr
 	const backend = createClaudeBackend();
 	eq(backend.supportsReasoning(ref, "minimal").warning, "Reasoning minimal is not supported by claude/opus; using low.", "backend names the model");
 	eq(backend.supportsTools, true, "claude backend supports tools");
+});
+
+test("the claude child never gets an output-token cap", async () => {
+	const fake = fakeSpawn(JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "pong" }));
+	const result = await createClaudeBackend(fake.spawn).call(ref, options({ maxTokens: 300 }));
+	eq(result.text, "pong", "call resolves");
+	eq(fake.calls.length, 1, "one spawn");
+	eq(fake.calls[0].env?.CLAUDE_CODE_MAX_OUTPUT_TOKENS, undefined, "no CLAUDE_CODE_MAX_OUTPUT_TOKENS in the child env");
+	eq(buildChildEnv({ CLAUDE_CODE_MAX_OUTPUT_TOKENS: "300", PATH: "/bin" }).CLAUDE_CODE_MAX_OUTPUT_TOKENS, "300", "an explicit user setting is left alone");
 });
 
 test("parseClaudeOutput returns text, structured output and turn accounting", () => {
