@@ -127,7 +127,9 @@ Spawns `claude` with:
 
 The prompt goes on stdin. `cwd` is the project directory. Measured in this session: the flag set above brings a haiku "pong" call from ~39k input tokens (full Claude Code system prompt, plugins, skills, MCP) down to 374. Every flag in that list is load-bearing for cost and must stay.
 
-Output parsing: the JSON `result` object. `is_error: true` or a non-zero exit, or `subtype !== "success"`, throws with the `result` text (which carries auth/billing errors) so `classifyAllPanelFailure` can match on it. `structured_output` populates `CallResult.structured`. `num_turns` and `permission_denials` populate `PanelToolUsage` (`turns`, `capped = num_turns >= maxToolCalls`). Individual tool calls are not visible in `json` output, so `tool_calls` is empty for this backend and the report says so.
+Output parsing: `--output-format json` when no tools are requested, `--output-format stream-json --verbose` when they are, so the assistant's text blocks are visible. `is_error: true` or a non-zero exit, or `subtype !== "success"`, throws with the `result` text (which carries auth/billing errors) so `classifyAllPanelFailure` can match on it. The one exception is `subtype: "error_max_turns"`: Claude Code drops `result` when the turn cap is hit, so the backend returns the last assistant text (possibly empty) with `capped: true`, and `emptyPanelError` in `fusion.ts` turns an empty one into "no text answer (tool-call budget or loop guard hit)" with the turn usage attached, as pi-fusion does. `structured_output` populates `CallResult.structured`. `num_turns` populates `PanelToolUsage.turns`. Individual tool calls are not visible in either output format, so `tool_calls` is empty for this backend and the report says so.
+
+Output caps: `maxPanelOutputTokens` and `maxCompletionTokens` are not applied to Claude calls. Setting `CLAUDE_CODE_MAX_OUTPUT_TOKENS` on the child makes an overrun a hard API error ("response exceeded the N output token maximum"), and thinking tokens share that budget, so the defaults failed real calls at `medium` and `high` reasoning. Claude panelists and judges run under Claude Code's own output limit. The two knobs apply to OpenRouter models only.
 
 Reasoning: `minimal` maps to `low` with a warning; the other five pass through to `--effort`. Temperature is not settable and is silently omitted.
 
@@ -141,7 +143,7 @@ Nested execution: verified in this session that `claude -p` runs from inside a C
 
 `POST https://openrouter.ai/api/v1/chat/completions` with `Authorization: Bearer $OPENROUTER_API_KEY`, `HTTP-Referer` and `X-OpenRouter-Title: claude-fusion`. Body: `model`, `messages` (system + user), `max_tokens`, `temperature`, and `reasoning: { effort }` when set. No SDK; `fetch` is built in.
 
-Missing `OPENROUTER_API_KEY` throws at call time with a message naming the variable. The key comes from the environment the MCP server inherits, or from the plugin's `userConfig` (`openrouter_api_key`) mapped into the server env in `.mcp.json`. Keys are never read from `fusion.json`.
+Missing `OPENROUTER_API_KEY` throws at call time with a message naming the variable. The key comes from the environment the MCP server inherits. Keys are never read from `fusion.json`. The key and `CLAUDE_CODE_SESSION_ID` are stripped from the environment of every `claude -p` child so panelists cannot read them.
 
 Errors: non-2xx throws `OpenRouter <status>: <error.message>`; 402 and 429 wording is preserved so `classifyAllPanelFailure` classifies credits and rate limits. `finish_reason: "error"` or an empty `choices` array throws.
 
@@ -245,25 +247,31 @@ Session id sources:
 
 All hooks are `{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/cli.ts", "hook", "<event>"] }`.
 
-- `UserPromptSubmit`: read state. If `mode !== "forced"`, exit 0 with no output. If the prompt starts with `/` or already starts with the force preamble, exit 0. Otherwise output `hookSpecificOutput.updatedInput.prompt` set to pi-fusion's `forceFusionPrompt(prompt)` without the `context_mode` line.
+- `UserPromptSubmit`: read state. If `mode !== "forced"`, exit 0 with no output. If the prompt is blank or starts with `/`, exit 0. Otherwise output `hookSpecificOutput.additionalContext` set to `FORCE_CONTEXT`, a fixed instruction telling Claude to call the fusion tool with the user's request before answering and then write the answer itself. `UserPromptSubmit` cannot rewrite the prompt (Claude Code only accepts `additionalContext` or a block decision, and any other shape shows a hook error on every prompt).
 - `PreToolUse` with matcher `mcp__plugin_claude_fusion_fusion__fusion|mcp__plugin_claude_fusion_fusion__fusion_report` (exact scoped names confirmed at implementation): if `mode === "off"`, output `permissionDecision: "deny"` with reason "Fusion is off for this session. Use /fusion available or /fusion on to re-enable it."
 - `SessionEnd`: `clearState(session_id)`.
 
-A hook that cannot read its state file exits 0 silently. Hooks never block on error.
+A hook that cannot read or write its state directory exits 0 silently: `hookOutput` in `cli.ts` wraps all state I/O and returns nothing on failure. Hooks never block on error.
 
 ### Commands (`commands/*.md`)
 
 Each command's body starts with an inline script, then a one-line instruction. Example `fusion.md`:
 
-```
+````
 ---
 description: "Fusion mode: /fusion on | available | off, /fusion <panel-name> arms a panel once, /fusion <prompt> forces one fusion call"
 argument-hint: "[on|available|off|<panel-name>|<prompt>]"
 ---
-!node "${CLAUDE_PLUGIN_ROOT}/src/cli.ts" fusion "$ARGUMENTS"
+```!
+node "${CLAUDE_PLUGIN_ROOT}/src/cli.ts" fusion <<'FUSION_ARGS'
+$ARGUMENTS
+FUSION_ARGS
+```
 
 Follow the instruction printed above exactly. If it contains a prompt to run, call the fusion tool with that prompt, then answer the user in your own words without pasting the raw JSON.
-```
+````
+
+`$ARGUMENTS` is substituted textually before the shell runs, so it must never sit inside a shell expression: `"$ARGUMENTS"` on a `!` line would let backticks or `$(...)` in a prompt execute. The fenced ```` ```! ```` block is Claude Code's multi-line inline-shell form, and the quoted heredoc delivers the text on stdin with no expansion. `cli.ts fusion` reads its argument from argv when present, otherwise from stdin (trimmed, empty meaning the toggle case). `fusion-status.md` and `fusion-init.md` use the single-line form, which requires backticks: `` !`node "${CLAUDE_PLUGIN_ROOT}/src/cli.ts" status` ``. Verified in Claude Code 2.1.276: a bare `!node ...` line is not pre-executed at all, and under the `auto` permission mode an inline command that would need a permission prompt is handed to the model to run itself, with the text intact.
 
 `cli.ts fusion <args>` decides, in this order, mirroring pi-fusion's `/fusion` handler:
 
@@ -280,7 +288,7 @@ Unchanged from pi-fusion at the pipeline level: a panelist that throws becomes `
 
 Backend-specific:
 
-- Claude: `claude` not on `PATH` throws "claude CLI not found" for that model. Exit code 143 (SIGTERM from cancellation) throws "cancelled".
+- Claude: `claude` not on `PATH` throws "claude CLI not found" for that model. A SIGTERM from the abort signal throws "timed out" when the per-call timeout fired, otherwise "cancelled".
 - OpenRouter: missing key, HTTP errors, network errors as in section 3. `AbortSignal` aborts the fetch.
 - Config parse errors log to stderr and fall through to the next path, as now.
 
@@ -319,3 +327,11 @@ Things this spec assumes that must be confirmed in the first implementation step
 - `typescript` dev only. No jiti, no test framework.
 - Node ≥ 22.18. Claude Code ≥ 2.1.259 (`--permission-prompts`). Both noted in README and `package.json` `engines`.
 - Licence MIT, matching pi-fusion. README credits pi-fusion and OpenRouter Fusion.
+
+## 12. Deviations from this spec in the shipped code
+
+- Session state lives in `~/.claude/claude-fusion/` (override with `FUSION_DATA_DIR`) rather than `${CLAUDE_PLUGIN_DATA}`, so the hooks, the `!` commands and the tests share one path that needs no plugin variable.
+- `.claude-plugin/plugin.json` has no `hooks` key. Claude Code 2.1.276 auto-loads `hooks/hooks.json` and fails plugin loading when the manifest also names that file.
+- The example config uses `openrouter/google/gemini-3.8-flash` rather than `gemini-3-pro`, which is not listed on OpenRouter.
+- `UserPromptSubmit` injects `additionalContext` instead of rewriting the prompt, and `/fusion` passes its argument through a quoted heredoc (section 7).
+- Claude output caps are not applied (section 3).

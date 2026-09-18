@@ -16,11 +16,11 @@ cd ~/code/claude-fusion && npm install
 claude --plugin-dir ~/code/claude-fusion
 ```
 
-Or add it as a marketplace: `claude plugin marketplace add callumw-k/claude-fusion` then `claude plugin install claude-fusion`. Run `npm install` in the installed plugin directory once. Claude Code does not install npm dependencies for you.
+Or add it as a marketplace: `claude plugin marketplace add callumw-k/claude-fusion` then `claude plugin install claude-fusion`. A marketplace install runs `npm ci --ignore-scripts` for you because the repo ships a `package-lock.json`, so `npm install` is only needed for a `--plugin-dir` checkout.
 
 ## Configure
 
-`/fusion-init` writes `.claude/fusion.json` in the project. `~/.claude/fusion.json` is the global fallback. The project file wins when both exist.
+`/fusion-init` writes `.claude/fusion.json` in the project. `~/.claude/fusion.json` is the global fallback. The project file wins when both exist. A project file can set `panelToolsConsent` too, so review it in cloned repos before enabling `all`.
 
 Model ids carry their backend:
 
@@ -56,15 +56,15 @@ Model ids carry their backend:
 | `temperature` | OpenRouter models only. `claude -p` does not accept one. |
 | `panelTools` | `none`, `readonly` (`Read,Grep,Glob`), `all` (adds `Bash,Edit,Write`), or a list. Claude panelists only. |
 | `panelToolsConsent` | Must be `true` for `all` or any list containing `Bash`, `Edit` or `Write`. Mutating panels run one model at a time. |
-| `maxToolCalls` | Passed to `claude -p --max-turns`, so it bounds model turns rather than individual tool calls. |
+| `maxToolCalls` | Passed to `claude -p --max-turns`, so it bounds model turns rather than individual tool calls. A panelist that reaches the bound is reported as capped: its last message is used as its answer, or it fails with "no text answer" if it had not spoken yet. |
 | `timeoutSeconds` | Per model call. |
 
 ## Use
 
 - The model calls `fusion` itself when a question warrants several perspectives. The tool takes only a prompt. Panel and judge are always yours to configure.
-- `/fusion` toggles between `available` and `forced`. In forced mode every plain prompt is routed through fusion first.
+- `/fusion` toggles between `available` and `forced`. In forced mode a hook attaches an instruction to every plain prompt telling Claude to call fusion before answering.
 - `/fusion on | available | off`. Off denies the tool for the session.
-- `/fusion <panel-name>` arms a named panel for the next fusion call.
+- `/fusion <panel-name>` arms a named panel for the next fusion call. A panel named `on`, `off`, `available`, `auto`, `force`, `forced`, `disable` or `disabled` cannot be armed this way, because those words set the mode.
 - `/fusion <prompt>` runs fusion once on that prompt.
 - `/fusion-report <prompt>` prints the full report: the analysis plus every panel response.
 - `/fusion-status` shows the mode, config file, resolved panel and judge.
