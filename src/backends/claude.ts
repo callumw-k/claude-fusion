@@ -18,7 +18,7 @@ export function buildClaudeArgs(ref: ModelRef, options: CallOptions): string[] {
 	const tools = options.tools.join(",");
 	const args = [
 		"-p",
-		"--output-format", "json",
+		...(options.tools.length > 0 ? ["--output-format", "stream-json", "--verbose"] : ["--output-format", "json"]),
 		"--no-session-persistence",
 		"--model", ref.model,
 		"--system-prompt", options.systemPrompt,
@@ -36,24 +36,55 @@ export function buildClaudeArgs(ref: ModelRef, options: CallOptions): string[] {
 }
 
 interface ClaudeJsonResult {
+	type?: string;
 	subtype?: string;
 	is_error?: boolean;
 	result?: string;
 	structured_output?: unknown;
 	num_turns?: number;
+	message?: { content?: Array<{ type?: string; text?: string }> };
 }
 
-function parseJsonResult(stdout: string): ClaudeJsonResult | undefined {
-	const candidates = [stdout, ...stdout.trim().split("\n").reverse()];
-	for (const candidate of candidates) {
-		try {
-			const parsed = JSON.parse(candidate) as unknown;
-			if (typeof parsed === "object" && parsed !== null) return parsed as ClaudeJsonResult;
-		} catch {
-			continue;
+interface ParsedClaudeStream {
+	result?: ClaudeJsonResult;
+	assistantText: string;
+}
+
+function parseObject(candidate: string): ClaudeJsonResult | undefined {
+	try {
+		const parsed = JSON.parse(candidate) as unknown;
+		return typeof parsed === "object" && parsed !== null ? (parsed as ClaudeJsonResult) : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function assistantText(event: ClaudeJsonResult): string {
+	return (event.message?.content ?? [])
+		.filter((block) => block.type === "text" && typeof block.text === "string")
+		.map((block) => block.text)
+		.join("\n")
+		.trim();
+}
+
+function parseClaudeStream(stdout: string): ParsedClaudeStream {
+	const whole = parseObject(stdout);
+	if (whole) return { result: whole, assistantText: "" };
+	let result: ClaudeJsonResult | undefined;
+	let last: ClaudeJsonResult | undefined;
+	let text = "";
+	for (const line of stdout.split("\n")) {
+		const event = parseObject(line);
+		if (!event) continue;
+		last = event;
+		if (event.type === "assistant") {
+			const spoken = assistantText(event);
+			if (spoken) text = spoken;
+		} else if (event.type === "result") {
+			result = event;
 		}
 	}
-	return undefined;
+	return { result: result ?? last, assistantText: text };
 }
 
 export function parseClaudeOutput(
@@ -62,18 +93,23 @@ export function parseClaudeOutput(
 	exitCode: number | null,
 	options: Pick<CallOptions, "tools" | "maxToolCalls">,
 ): CallResult {
-	const parsed = parseJsonResult(stdout);
+	const { result: parsed, assistantText: spoken } = parseClaudeStream(stdout);
 	if (!parsed) {
 		throw new Error(`claude -p produced no JSON result (exit ${exitCode ?? "null"}): ${(stderr || stdout).trim().slice(0, 500)}`);
 	}
-	if (exitCode !== 0 || parsed.is_error || parsed.subtype !== "success") {
-		throw new Error(parsed.result?.trim() || stderr.trim() || `claude -p failed (exit ${exitCode ?? "null"}, ${parsed.subtype ?? "unknown"})`);
+	const toolsRequested = options.tools.length > 0;
+	const hitMaxTurns = parsed.subtype === "error_max_turns";
+	const text = parsed.result ?? (hitMaxTurns ? spoken : "");
+	const cappedWithAnswer = hitMaxTurns && (toolsRequested || text.trim().length > 0);
+	if (!cappedWithAnswer && (exitCode !== 0 || parsed.is_error || parsed.subtype !== "success")) {
+		throw new Error(text.trim() || stderr.trim() || `claude -p failed (exit ${exitCode ?? "null"}, ${parsed.subtype ?? "unknown"})`);
 	}
 	const turns = parsed.num_turns ?? 1;
+	const capped = hitMaxTurns || turns >= options.maxToolCalls;
 	return {
-		text: parsed.result ?? "",
+		text,
 		...(parsed.structured_output !== undefined ? { structured: parsed.structured_output } : {}),
-		...(options.tools.length > 0 ? { tools: { turns, tool_calls: [], capped: turns >= options.maxToolCalls } } : {}),
+		...(toolsRequested ? { tools: { turns, tool_calls: [], capped } } : {}),
 	};
 }
 

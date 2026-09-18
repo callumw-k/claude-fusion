@@ -76,6 +76,7 @@ test("buildClaudeArgs adds tool, effort and schema flags only when requested", (
 	const args = buildClaudeArgs(ref, options({ tools: ["Read", "Grep"], maxToolCalls: 5, reasoning: "high", jsonSchema: { type: "object" } }));
 	const joined = args.join(" ");
 	for (const needle of [
+		"--output-format stream-json --verbose",
 		"--tools Read,Grep",
 		"--allowedTools Read,Grep",
 		"--permission-prompts none",
@@ -126,4 +127,38 @@ test("parseClaudeOutput throws the result text on error results and non-zero exi
 	eq(e2.message, "stderr text", "falls back to stderr");
 	const e3 = attempt(() => parseClaudeOutput("", "", 127, { tools: [], maxToolCalls: 16 })) as Error;
 	if (!e3.message.includes("no JSON result")) throw new Error(`unexpected: ${e3.message}`);
+});
+
+function streamLines(events: unknown[]): string {
+	return events.map((event) => JSON.stringify(event)).join("\n") + "\n";
+}
+
+test("parseClaudeOutput keeps a max-turns answer as a capped success", () => {
+	const cappedResult = { type: "result", subtype: "error_max_turns", is_error: true, num_turns: 3, errors: ["Reached maximum number of turns (3)"] };
+	const stdout = streamLines([
+		{ type: "system", subtype: "init" },
+		{ type: "assistant", message: { content: [{ type: "text", text: "Looking at the README first." }, { type: "tool_use", name: "Read" }] } },
+		{ type: "user", message: { content: [{ type: "tool_result" }] } },
+		{ type: "assistant", message: { content: [{ type: "text", text: "The README says" }, { type: "text", text: "it is a scratch project." }, { type: "tool_use", name: "Grep" }] } },
+		cappedResult,
+	]);
+	eq(parseClaudeOutput(stdout, "", 1, { tools: ["Read", "Grep"], maxToolCalls: 3 }), {
+		text: "The README says\nit is a scratch project.",
+		tools: { turns: 3, tool_calls: [], capped: true },
+	}, "last spoken text survives the cap");
+	const silent = streamLines([{ type: "assistant", message: { content: [{ type: "tool_use", name: "Read" }] } }, cappedResult]);
+	eq(parseClaudeOutput(silent, "", 1, { tools: ["Read"], maxToolCalls: 3 }), {
+		text: "",
+		tools: { turns: 3, tool_calls: [], capped: true },
+	}, "a silent cap keeps its turn usage so fusion can report no text answer");
+	const noTools = attempt(() => parseClaudeOutput(JSON.stringify(cappedResult), "", 1, { tools: [], maxToolCalls: 16 })) as Error;
+	if (!noTools.message.includes("error_max_turns")) throw new Error(`without tools an empty max-turns result must fail: ${noTools.message}`);
+	const success = streamLines([
+		{ type: "assistant", message: { content: [{ type: "text", text: "thinking aloud" }] } },
+		{ type: "result", subtype: "success", is_error: false, result: "final answer", num_turns: 2 },
+	]);
+	eq(parseClaudeOutput(success, "", 0, { tools: ["Read"], maxToolCalls: 3 }), {
+		text: "final answer",
+		tools: { turns: 2, tool_calls: [], capped: false },
+	}, "a stream-json success uses the result text, not the running commentary");
 });
