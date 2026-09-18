@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-18-claude-fusion-design.md`
 
+**Execution:** waves
+
 ## Global Constraints
 
 - Node ≥ 22.18.0. Source must be erasable-syntax only (no `enum`, no constructor parameter properties, no `namespace`); `tsconfig.json` sets `"erasableSyntaxOnly": true`. All relative imports use the `.ts` extension.
