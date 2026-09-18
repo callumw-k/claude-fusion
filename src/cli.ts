@@ -84,7 +84,8 @@ export function initCommand(projectDir: string): string {
 	if (existsSync(path)) return `${path} already exists. Not overwriting. Example config:\n${example}`;
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(path, example + "\n");
-	return `Wrote ${path}. Edit the panel and judge ids, and set OPENROUTER_API_KEY in your shell for openrouter/* models.`;
+	const keyHint = process.env.OPENROUTER_API_KEY ? "" : " OPENROUTER_API_KEY is not set: set it in your shell for openrouter/* models.";
+	return `Wrote ${path}. Edit the panel and judge ids.${keyHint}`;
 }
 
 export interface HookInput {

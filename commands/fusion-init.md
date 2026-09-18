@@ -4,4 +4,4 @@ allowed-tools: Bash(node:*)
 ---
 !`node "${CLAUDE_PLUGIN_ROOT}/src/cli.ts" init`
 
-Report the result printed above to the user. If a file was written, remind them to set OPENROUTER_API_KEY in their shell for openrouter/* models and to edit the panel to taste.
+Report the result printed above to the user. If a file was written, remind them to edit the panel to taste. Only mention OPENROUTER_API_KEY if the output above says it is not set.
