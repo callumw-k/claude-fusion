@@ -309,15 +309,14 @@ export async function runFusion(input: RunFusionInput): Promise<FusionResult> {
 		if (config.judgeReasoning) {
 			judgeReasoningDetails = { requested: config.judgeReasoning, effective: judgeReasoning.effective ?? null };
 		}
-		const judgeBudgetPerResponse = Math.max(
-			1024,
-			Math.floor((await judgeBackend.contextWindow(judge)) / Math.max(successful.length * 2, 8)),
-		);
-		const judgeUserText =
-			`Task:\n${prompt}\n\n` +
-			successful.map((r) => `--- Response from ${r.model} ---\n${truncateForJudge(r.content, judgeBudgetPerResponse)}`).join("\n\n");
-
 		try {
+			const judgeBudgetPerResponse = Math.max(
+				1024,
+				Math.floor((await judgeBackend.contextWindow(judge)) / Math.max(successful.length * 2, 8)),
+			);
+			const judgeUserText =
+				`Task:\n${prompt}\n\n` +
+				successful.map((r) => `--- Response from ${r.model} ---\n${truncateForJudge(r.content, judgeBudgetPerResponse)}`).join("\n\n");
 			const judgeResult = await callWithTimeout(
 				judgeBackend,
 				judge,

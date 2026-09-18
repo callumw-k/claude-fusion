@@ -15,7 +15,7 @@ export interface FakeBackend extends Backend {
 export function fakeBackend(
 	name: BackendName,
 	responses: Record<string, ScriptedResponse>,
-	opts: { supportsTools?: boolean; reasoning?: (ref: ModelRef, level: ThinkingLevel) => ReasoningSupport; contextWindow?: number } = {},
+	opts: { supportsTools?: boolean; reasoning?: (ref: ModelRef, level: ThinkingLevel) => ReasoningSupport; contextWindow?: number | Error } = {},
 ): FakeBackend {
 	const calls: RecordedCall[] = [];
 	return {
@@ -24,6 +24,7 @@ export function fakeBackend(
 		supportsTools: opts.supportsTools ?? false,
 		supportsReasoning: opts.reasoning ?? ((_ref, level) => ({ effective: level })),
 		async contextWindow() {
+			if (opts.contextWindow instanceof Error) throw opts.contextWindow;
 			return opts.contextWindow ?? 128_000;
 		},
 		async call(ref, options) {

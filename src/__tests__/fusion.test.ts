@@ -162,6 +162,20 @@ test("runFusion surfaces an unparseable judge and classifies total failure", asy
 	eq(allFail.details.error, "all panel models failed", "error text");
 });
 
+test("runFusion keeps panel answers when the judge context window lookup fails", async () => {
+	const claude = fakeBackend("claude", {
+		opus: { text: "first answer, long enough to be excerpted in the tool result output" },
+		sonnet: { text: "should not be reached" },
+	}, { contextWindow: new Error("context window lookup failed") });
+	const openrouter = fakeBackend("openrouter", { "openai/gpt-5.5": { text: "second answer, long enough to be excerpted in the tool result output" } });
+	const result = await runFusion(input(twoBackendConfig, fakeBackends(claude, openrouter)));
+	eq(result.details.status, "ok", "panel success kept");
+	eq(result.details.analysis, undefined, "no analysis");
+	eq(result.details.failure_reason, "unexpected_error", "judge failure classified");
+	eq(result.details.responses.map((r) => r.model), ["claude/opus", "openrouter/openai/gpt-5.5"], "both responses retained");
+	if (!result.details.warnings?.some((w) => w.includes("Judge call failed"))) throw new Error("expected judge call failed warning");
+});
+
 test("runFusion strips mutating tools without consent, serialises with consent, and warns for toolless backends", async () => {
 	const withTools: FusionConfig = { panel: ["claude/opus", "openrouter/a/b"], judge: "claude/sonnet", panelTools: "all", maxToolCalls: 4 };
 	const claude = fakeBackend("claude", { opus: { text: "claude", structured: undefined }, sonnet: { text: EMPTY_ANALYSIS } }, { supportsTools: true });
