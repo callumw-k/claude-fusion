@@ -10,7 +10,7 @@ Source of the port: pi-fusion 0.9.1 at `/home/dev/code/active/pi-fusion`.
 
 - `fusion` MCP tool with the same params as pi-fusion minus `context_mode`/`context_turns`: `prompt` only.
 - `fusion.json` config, global and project, with named panels, `defaultPanel`, per-panel and judge reasoning, temperature, token budgets, panel tool selection and consent.
-- Model backends: `claude/*` via `claude -p` on the user's Claude Code login, `openrouter/*` via the OpenRouter HTTP API, and (added later) `codex/*` via `codex exec` on a ChatGPT login.
+- Model backends: `claude/*` via `claude -p` on the user's Claude Code login, `openrouter/*` via the OpenRouter HTTP API, and (added later) `codex/*` via `codex exec` on a ChatGPT login and `agy/*` via `agy -p` on an Antigravity login.
 - Judge on either backend. Structured output via `--json-schema` on the Claude backend, `extractJson` on OpenRouter.
 - Session modes `available` (default), `forced`, `off`. `/fusion <prompt>` forces once. `/fusion <panel-name>` arms a named panel for the next fusion call.
 - Panel tools for Claude panelists only: `readonly` = `Read,Grep,Glob`; `all` adds `Bash,Edit,Write` behind `panelToolsConsent` and serialises the panel.
@@ -51,6 +51,7 @@ claude-fusion/
 │   │   ├── types.ts           Backend interface, ModelRef
 │   │   ├── claude.ts          spawn claude -p
 │   │   ├── codex.ts           spawn codex exec
+│   │   ├── agy.ts             spawn agy -p
 │   │   ├── spawn.ts           shared child-process loop for the CLI backends
 │   │   ├── openrouter.ts      fetch chat/completions, models cache
 │   │   └── registry.ts        parse ids, pick backend, contextWindow lookup
@@ -80,12 +81,13 @@ A model id is `<backend>/<rest>`:
 
 - `claude/<model>`: `<model>` is passed verbatim to `claude -p --model`, so aliases (`opus`, `sonnet`, `haiku`) and full ids both work.
 - `codex/<model>`: `<model>` is passed verbatim to `codex exec --model`.
+- `agy/<model>`: `<model>` is passed verbatim to `agy --model`.
 - `openrouter/<vendor>/<model>`: `<vendor>/<model>` is the OpenRouter model id.
 
 `registry.ts` exports `parseModelRef(id): ModelRef | undefined` and `modelDisplay(ref)` (the original string). Unknown backend prefix or an empty remainder is an "Unknown model identifier" warning, as in pi-fusion. There is no auth check at resolution time. Auth failures surface as per-model errors at call time and the existing degradation handles them.
 
 ```ts
-interface ModelRef { backend: "claude" | "codex" | "openrouter"; model: string; display: string }
+interface ModelRef { backend: "claude" | "codex" | "agy" | "openrouter"; model: string; display: string }
 
 interface CallOptions {
 	systemPrompt: string;
@@ -152,7 +154,17 @@ Output parsing: the last `item.completed` event with `item.type === "agent_messa
 
 Tools: `supportsTools: false`. `codex exec` has no per-tool allowlist and no turn cap, so `maxToolCalls` could not be honoured. Reasoning: `minimal` downgrades to `low` with a warning; the rest pass through and an unsupported level surfaces the CLI's error. Context window is a constant 272 000 (every model in the CLI's cache reports it).
 
-Both CLI backends share `spawn.ts` (`runCli`, `buildChildEnv`, `abortError`).
+### Antigravity backend (added after the initial spec)
+
+`agy/<model>` spawns `agy -p` on the user's Google login (Antigravity CLI 1.2.6 verified). It exists so a Gemini panelist can run on an Antigravity account. `openrouter/google/<model>` remains the OpenRouter route. `agy models` also lists Claude and GPT-OSS ids, which work the same way.
+
+Invocation: `agy -p= --input-format stream-json --output-format stream-json --disable-slash-commands --sandbox --model <model> [--effort <level>] [--json-schema <tmp>/schema.json]` with one `{"event":"user","message":{"role":"user","content":…}}` line on stdin. `-p` consumes its next argument as the prompt, so the empty `-p=` form is what lets the prompt come from stdin. The CLI has no system-prompt flag, so `content` is the system prompt, a `---` line, then the user text. There is no equivalent of `--ignore-user-config`. A "pong" call measured about 13k input tokens, nearly all of it the CLI's built-in tools.
+
+Output parsing: the last `result` event is the answer. `result.status !== "SUCCESS"` (its `error` carries auth and unsupported-model errors) or a non-zero exit throws, and so does a missing result event. With a schema the CLI sets `result.structured_output` and `result.response` picks up stray keys, so `structured_output` becomes both `structured` and the serialised `text`.
+
+Tools: `supportsTools: false`, as for Codex. Reasoning: `--effort` accepts `low`, `medium` and `high`, so `minimal` runs as `low` and `xhigh`/`max` as `high`, each with a warning. Most ids in `agy models` end in `-low`, `-medium` or `-high`, and passing `--effort` alongside one is a CLI error, so the backend skips the flag for those ids and warns that the id fixes the effort. Context window is a constant 200 000, a floor for every model the CLI lists.
+
+All CLI backends share `spawn.ts` (`runCli`, `buildChildEnv`, `abortError`).
 
 ### OpenRouter backend
 

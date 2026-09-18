@@ -38,7 +38,7 @@ export function fakeBackend(
 }
 
 export function fakeBackends(claude: FakeBackend, openrouter: FakeBackend, codex: FakeBackend = fakeBackend("codex", {})): Backends {
-	return { claude, codex, openrouter };
+	return { claude, codex, agy: fakeBackend("agy", {}), openrouter };
 }
 
 export const EMPTY_ANALYSIS = JSON.stringify({ consensus: [], contradictions: [], partial_coverage: [], unique_insights: [], blind_spots: [] });

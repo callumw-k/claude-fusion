@@ -9,6 +9,7 @@ test("parseModelRef splits backend from model and keeps nested slashes", () => {
 		"openrouter vendor/model, trimmed",
 	);
 	eq(parseModelRef("codex/gpt-5.5"), { backend: "codex", model: "gpt-5.5", display: "codex/gpt-5.5" }, "codex cli model");
+	eq(parseModelRef("agy/gemini-3.8-flash"), { backend: "agy", model: "gemini-3.8-flash", display: "agy/gemini-3.8-flash" }, "antigravity cli model");
 });
 
 test("parseModelRef rejects unknown backends and empty parts", () => {

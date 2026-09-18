@@ -1,5 +1,5 @@
 export type ThinkingLevel = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
-export type BackendName = "claude" | "codex" | "openrouter";
+export type BackendName = "claude" | "codex" | "agy" | "openrouter";
 
 export interface ModelRef {
 	backend: BackendName;
