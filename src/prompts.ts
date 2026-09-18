@@ -63,10 +63,12 @@ export const FUSION_ANALYSIS_SCHEMA: Record<string, unknown> = {
 							type: "object",
 							properties: { model: { type: "string" }, stance: { type: "string" } },
 							required: ["model", "stance"],
+							additionalProperties: false,
 						},
 					},
 				},
 				required: ["topic", "stances"],
+				additionalProperties: false,
 			},
 		},
 		partial_coverage: {
@@ -75,6 +77,7 @@ export const FUSION_ANALYSIS_SCHEMA: Record<string, unknown> = {
 				type: "object",
 				properties: { models: { type: "array", items: { type: "string" } }, point: { type: "string" } },
 				required: ["models", "point"],
+				additionalProperties: false,
 			},
 		},
 		unique_insights: {
@@ -83,9 +86,11 @@ export const FUSION_ANALYSIS_SCHEMA: Record<string, unknown> = {
 				type: "object",
 				properties: { model: { type: "string" }, insight: { type: "string" } },
 				required: ["model", "insight"],
+				additionalProperties: false,
 			},
 		},
 		blind_spots: { type: "array", items: { type: "string" } },
 	},
 	required: ["consensus", "contradictions", "partial_coverage", "unique_insights", "blind_spots"],
+	additionalProperties: false,
 };

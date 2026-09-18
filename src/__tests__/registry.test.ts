@@ -8,6 +8,7 @@ test("parseModelRef splits backend from model and keeps nested slashes", () => {
 		{ backend: "openrouter", model: "openai/gpt-5.5", display: "openrouter/openai/gpt-5.5" },
 		"openrouter vendor/model, trimmed",
 	);
+	eq(parseModelRef("codex/gpt-5.5"), { backend: "codex", model: "gpt-5.5", display: "codex/gpt-5.5" }, "codex cli model");
 });
 
 test("parseModelRef rejects unknown backends and empty parts", () => {

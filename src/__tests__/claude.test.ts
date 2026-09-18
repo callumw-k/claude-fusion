@@ -1,40 +1,11 @@
-import { EventEmitter } from "node:events";
-import { abortError, buildChildEnv, buildClaudeArgs, claudeReasoning, createClaudeBackend, parseClaudeOutput, type SpawnLike } from "../backends/claude.ts";
+import { buildClaudeArgs, claudeReasoning, createClaudeBackend, parseClaudeOutput } from "../backends/claude.ts";
+import { abortError, buildChildEnv } from "../backends/spawn.ts";
 import type { CallOptions } from "../backends/types.ts";
 import { parseModelRef } from "../backends/registry.ts";
+import { fakeSpawn } from "./_fake_spawn.ts";
 import { eq, test } from "./_harness.ts";
 
 const ref = parseModelRef("claude/opus")!;
-
-interface FakeSpawn {
-	spawn: SpawnLike;
-	calls: Array<{ args: string[]; env: NodeJS.ProcessEnv | undefined }>;
-	kills: string[];
-}
-
-function fakeSpawn(stdout?: string): FakeSpawn {
-	const record: FakeSpawn = { calls: [], kills: [], spawn: undefined as unknown as SpawnLike };
-	record.spawn = ((_cmd: string, args: readonly string[], opts: { env?: NodeJS.ProcessEnv }) => {
-		record.calls.push({ args: [...args], env: opts.env });
-		const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; stdin: EventEmitter & { end(): void }; kill(signal: string): boolean };
-		child.stdout = new EventEmitter();
-		child.stderr = new EventEmitter();
-		child.stdin = Object.assign(new EventEmitter(), { end() {} });
-		child.kill = (signal: string) => {
-			record.kills.push(signal);
-			setImmediate(() => child.emit("close", null));
-			return true;
-		};
-		if (stdout !== undefined) {
-			setImmediate(() => {
-				child.stdout.emit("data", stdout);
-				child.emit("close", 0);
-			});
-		}
-		return child;
-	}) as unknown as SpawnLike;
-	return record;
-}
 
 function options(overrides: Partial<CallOptions> = {}): CallOptions {
 	return {
@@ -100,7 +71,7 @@ test("claudeReasoning maps minimal to low with a warning and passes the rest thr
 });
 
 test("the claude child never gets an output-token cap", async () => {
-	const fake = fakeSpawn(JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "pong" }));
+	const fake = fakeSpawn({ stdout: JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "pong" }) });
 	const result = await createClaudeBackend(fake.spawn).call(ref, options({ maxTokens: 300 }));
 	eq(result.text, "pong", "call resolves");
 	eq(fake.calls.length, 1, "one spawn");

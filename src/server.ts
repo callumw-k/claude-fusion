@@ -4,6 +4,7 @@ import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/proto
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { createClaudeBackend } from "./backends/claude.ts";
+import { createCodexBackend } from "./backends/codex.ts";
 import { createOpenRouterBackend } from "./backends/openrouter.ts";
 import type { Backends } from "./backends/types.ts";
 import { loadConfig } from "./config.ts";
@@ -27,7 +28,7 @@ const PROMPT_DESCRIPTION = "The question or task for the panel, including any co
 
 type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 
-const backends: Backends = { claude: createClaudeBackend(), openrouter: createOpenRouterBackend() };
+const backends: Backends = { claude: createClaudeBackend(), codex: createCodexBackend(), openrouter: createOpenRouterBackend() };
 const projectDir = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
 
 async function execute(prompt: string, extra: Extra): Promise<FusionResult> {

@@ -2,13 +2,13 @@
 
 Multi-model deliberation for Claude Code. The `fusion` tool sends one prompt to a panel of models at the same time, then a judge model compares their answers and returns a structured analysis: what they agree on, where they contradict each other, what only some of them covered, what only one of them noticed, and what none of them addressed. Claude reads that analysis and writes you an answer informed by it.
 
-Panel models can be Claude (through your Claude Code login) or anything on OpenRouter. A port of [pi-fusion](https://github.com/synthetic-recon/pi-fusion), itself inspired by OpenRouter Fusion.
+Panel models can be Claude (through your Claude Code login), OpenAI models through the Codex CLI (on your ChatGPT login), or anything on OpenRouter. A port of [pi-fusion](https://github.com/synthetic-recon/pi-fusion), itself inspired by OpenRouter Fusion.
 
 ## Requirements
 
 - Claude Code 2.1.259 or later
 - Node 22.18 or later (the plugin runs TypeScript directly, there is no build)
-- An OpenRouter key if you want non-Claude models on the panel
+- For non-Claude models on the panel, one or both of: an OpenRouter key, or the [Codex CLI](https://github.com/openai/codex) (`npm install -g @openai/codex`) logged in to a ChatGPT account with Codex access
 
 ## Quick start
 
@@ -27,6 +27,8 @@ Panel models can be Claude (through your Claude Code login) or anything on OpenR
    export OPENROUTER_API_KEY=sk-or-...    # fish: set -x OPENROUTER_API_KEY sk-or-...
    ```
 
+   If you want OpenAI models on a ChatGPT subscription instead, run `codex login` once and check `codex login status` says you are logged in with ChatGPT.
+
 3. Start Claude Code in a project.
 
    ```
@@ -41,11 +43,11 @@ Panel models can be Claude (through your Claude Code login) or anything on OpenR
    /fusion-init
    ```
 
-   This writes `.claude/fusion.json` in the project with a three-model panel (Claude Opus, GPT 5.5 and Gemini 3.8 Flash through OpenRouter) judged by Opus. Edit the model list to taste. If you have no OpenRouter key, keep only `claude/*` entries, for example:
+   This writes `.claude/fusion.json` in the project with a three-model panel (Claude Opus, GPT 5.5 and Gemini 3.8 Flash through OpenRouter) judged by Opus. Edit the model list to taste. Without an OpenRouter key, keep only `claude/*` entries. With the Codex CLI installed and logged in to ChatGPT, `codex/*` can take the OpenAI seat instead, for example:
 
    ```json
    {
-     "panel": ["claude/opus", "claude/sonnet"],
+     "panel": ["claude/opus", "codex/gpt-5.5"],
      "judge": "claude/opus"
    }
    ```
@@ -134,7 +136,10 @@ The report from `/fusion-report` adds every panelist's full response underneath,
 Model ids carry their backend:
 
 - `claude/<model>`: runs `claude -p` on your Claude Code login. `opus`, `sonnet`, `haiku` and full model ids all work.
+- `codex/<model>`: runs `codex exec` on your ChatGPT login. The model must be one your plan offers in Codex (an unsupported id fails at call time with the CLI's message). Text only. Your `~/.codex/config.toml`, rules and MCP servers are not loaded for panel calls.
 - `openrouter/<vendor>/<model>`: an OpenRouter id such as `openrouter/openai/gpt-5.5`. Text only.
+
+OpenAI models are the one case with two routes, and the prefix is the whole choice. `codex/gpt-5.5` needs the Codex CLI on `PATH` and logged in. `openrouter/openai/gpt-5.5` needs `OPENROUTER_API_KEY`. Nothing falls back from one to the other: a panel that lists `codex/gpt-5.5` on a machine without the CLI reports that panelist as failed and the rest of the panel runs. A panel may list both if you want the same model through both routes.
 
 What `/fusion-init` writes:
 
@@ -163,10 +168,10 @@ What `/fusion-init` writes:
 | --- | --- |
 | `panels`, `defaultPanel` | Named panels and which one applies by default. Top-level `panel` and `judge` are the fallback when no named panel resolves. |
 | `judge` | Any model id. Omit it and the first panelist judges. |
-| `panelReasoning`, `judgeReasoning` | `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Claude models run `minimal` as `low`. |
+| `panelReasoning`, `judgeReasoning` | `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Claude and Codex models run `minimal` as `low`. A Codex model that lacks a level (`gpt-5.5` stops at `xhigh`) fails with the CLI's message. |
 | `maxPanelModels` | Cap on panel size, up to 8. |
-| `maxPanelOutputTokens`, `maxCompletionTokens` | OpenRouter models only. Claude models run under Claude Code's own output limit, because `claude -p` fails the whole call rather than truncating when a cap is hit. |
-| `temperature` | OpenRouter models only. |
+| `maxPanelOutputTokens`, `maxCompletionTokens` | OpenRouter models only. Claude models run under Claude Code's own output limit, because `claude -p` fails the whole call rather than truncating when a cap is hit. Codex models run under the CLI's own limit, which has no flag. |
+| `temperature` | OpenRouter models only. Neither CLI exposes it. |
 | `panelTools` | `none`, `readonly` (`Read,Grep,Glob`), `all` (adds `Bash,Edit,Write`), or an explicit list. Claude panelists only. |
 | `panelToolsConsent` | Must be `true` before `Bash`, `Edit` or `Write` are given to panelists. |
 | `maxToolCalls` | Passed to `claude -p --max-turns`, so it bounds model turns rather than tool calls. A panelist that hits it is reported as capped and its last message becomes its answer. |
@@ -174,7 +179,7 @@ What `/fusion-init` writes:
 
 ## Cost and time
 
-Each fusion call is one model call per panelist plus one judge call. Claude panelists bill to your Claude Code login. Each one is a `claude -p` process started with `--system-prompt`, `--strict-mcp-config`, `--setting-sources ""` and a restricted tool list, so it does not load your plugins, skills, MCP servers or `CLAUDE.md`. A trivial call measured about 400 input tokens against roughly 39k for an unrestricted `claude -p`. OpenRouter panelists bill to your OpenRouter account at that model's rate.
+Each fusion call is one model call per panelist plus one judge call. Claude panelists bill to your Claude Code login. Each one is a `claude -p` process started with `--system-prompt`, `--strict-mcp-config`, `--setting-sources ""` and a restricted tool list, so it does not load your plugins, skills, MCP servers or `CLAUDE.md`. A trivial call measured about 400 input tokens against roughly 39k for an unrestricted `claude -p`. Codex panelists bill to your ChatGPT subscription's Codex quota. Each one is a `codex exec` process started with `--ignore-user-config`, `--ignore-rules` and a replacement instructions file, so it skips your Codex config, MCP servers and the stock Codex system prompt. A trivial call measured just under 10k input tokens, most of it the CLI's built-in tool definitions, which have no flag. OpenRouter panelists bill to your OpenRouter account at that model's rate.
 
 Panelists run in parallel (up to four at once, one at a time when mutating tools are on). Wall time is roughly the slowest panelist plus the judge.
 
@@ -182,10 +187,12 @@ Panelists run in parallel (up to four at once, one at a time when mutating tools
 
 | Symptom | Cause and fix |
 | --- | --- |
-| `No panel configured. Run /fusion-init to create .claude/fusion.json.` | No config found, or the panel list is empty or all ids are invalid. Run `/fusion-init` or check the ids (`claude/...` or `openrouter/vendor/model`). |
+| `No panel configured. Run /fusion-init to create .claude/fusion.json.` | No config found, or the panel list is empty or all ids are invalid. Run `/fusion-init` or check the ids (`claude/...`, `codex/...` or `openrouter/vendor/model`). |
 | `Cannot enable forced mode: ...` | Forced mode needs a resolvable panel. Fix the config first. |
 | A panelist fails with `OPENROUTER_API_KEY is not set` | Export `OPENROUTER_API_KEY` in the shell that starts Claude Code, then restart it. |
-| A panelist fails with `claude CLI not found on PATH` | The `claude` binary is not visible to the plugin's server process. Usually a PATH difference between your shell and the launcher. |
+| A panelist fails with `claude CLI not found on PATH` or `codex CLI not found on PATH` | The binary is not visible to the plugin's server process. Usually a PATH difference between your shell and the launcher. |
+| A Codex panelist fails with `The '<model>' model is not supported when using Codex with a ChatGPT account` | Your plan does not offer that model in Codex. Pick one it does, or use `openrouter/openai/<model>` instead. |
+| A Codex panelist fails with a login or authentication message | Run `codex login` in a terminal, then retry. |
 | A panelist fails with `OpenRouter 402 (insufficient credits)` or `429 (rate limited)` | Top up or wait. The rest of the panel still runs and the report lists the failure. |
 | A panelist fails with `timed out` | Raise `timeoutSeconds` or lower the reasoning level for that model. |
 | Report says `Judge analysis unavailable` | The judge errored or returned unparseable JSON. The panel responses are still in the report. Try a different judge or lower its reasoning. |
@@ -197,7 +204,7 @@ Modes and armed panels live in `~/.claude/claude-fusion/sessions/` (`FUSION_DATA
 
 ## What is not ported from pi-fusion
 
-Auto-diverse panel selection (OpenRouter models are not "authed", so auto-picking would spend money on arbitrary models), the footer status, the setup TUI, `context_mode: recent`, and tools for OpenRouter panelists.
+Auto-diverse panel selection (OpenRouter models are not "authed", so auto-picking would spend money on arbitrary models), the footer status, the setup TUI, `context_mode: recent`, and tools for OpenRouter and Codex panelists.
 
 ## Development
 

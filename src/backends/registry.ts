@@ -1,6 +1,6 @@
 import type { BackendName, ModelRef } from "../types.ts";
 
-const BACKEND_NAMES: readonly BackendName[] = ["claude", "openrouter"];
+const BACKEND_NAMES: readonly BackendName[] = ["claude", "codex", "openrouter"];
 
 function isBackendName(value: string): value is BackendName {
 	return (BACKEND_NAMES as readonly string[]).includes(value);

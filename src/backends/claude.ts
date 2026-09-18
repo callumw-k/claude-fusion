@@ -1,11 +1,10 @@
 import { spawn } from "node:child_process";
 import type { ModelRef, ThinkingLevel } from "../types.ts";
+import { runCli, type SpawnLike } from "./spawn.ts";
 import type { Backend, CallOptions, CallResult, ReasoningSupport } from "./types.ts";
 
 export const CLAUDE_CONTEXT_WINDOW = 200_000;
 const EMPTY_MCP_CONFIG = JSON.stringify({ mcpServers: {} });
-
-export type SpawnLike = typeof spawn;
 
 export function claudeReasoning(level: ThinkingLevel): ReasoningSupport {
 	if (level === "minimal") {
@@ -113,56 +112,12 @@ export function parseClaudeOutput(
 	};
 }
 
-const CHILD_ENV_STRIPPED = ["OPENROUTER_API_KEY", "CLAUDE_CODE_SESSION_ID"];
-
-export function buildChildEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-	const child = { ...env };
-	for (const key of CHILD_ENV_STRIPPED) delete child[key];
-	return child;
-}
-
-export function abortError(signal: AbortSignal | undefined): Error {
-	const reason = signal?.reason as { name?: string } | undefined;
-	return new Error(reason?.name === "TimeoutError" ? "timed out" : "cancelled");
-}
-
 function runClaude(spawnImpl: SpawnLike, ref: ModelRef, options: CallOptions): Promise<CallResult> {
-	return new Promise((resolve, reject) => {
-		const child = spawnImpl("claude", buildClaudeArgs(ref, options), {
-			cwd: options.cwd,
-			env: buildChildEnv(process.env),
-			stdio: ["pipe", "pipe", "pipe"],
-		});
-		let stdout = "";
-		let stderr = "";
-		child.stdout?.on("data", (chunk: Buffer | string) => {
-			stdout += chunk.toString();
-		});
-		child.stderr?.on("data", (chunk: Buffer | string) => {
-			stderr += chunk.toString();
-		});
-		const onAbort = () => child.kill("SIGTERM");
-		options.signal?.addEventListener("abort", onAbort, { once: true });
-		const cleanup = () => options.signal?.removeEventListener("abort", onAbort);
-		child.on("error", (err: NodeJS.ErrnoException) => {
-			cleanup();
-			reject(err.code === "ENOENT" ? new Error("claude CLI not found on PATH") : err);
-		});
-		child.on("close", (code) => {
-			cleanup();
-			if (options.signal?.aborted) {
-				reject(abortError(options.signal));
-				return;
-			}
-			try {
-				resolve(parseClaudeOutput(stdout, stderr, code, options));
-			} catch (err) {
-				reject(err);
-			}
-		});
-		child.stdin?.on("error", () => {});
-		child.stdin?.end(options.userText);
-	});
+	return runCli(
+		spawnImpl,
+		{ command: "claude", args: buildClaudeArgs(ref, options), cwd: options.cwd, stdin: options.userText, signal: options.signal },
+		(stdout, stderr, exitCode) => parseClaudeOutput(stdout, stderr, exitCode, options),
+	);
 }
 
 export function createClaudeBackend(spawnImpl: SpawnLike = spawn): Backend {

@@ -10,7 +10,7 @@ Source of the port: pi-fusion 0.9.1 at `/home/dev/code/active/pi-fusion`.
 
 - `fusion` MCP tool with the same params as pi-fusion minus `context_mode`/`context_turns`: `prompt` only.
 - `fusion.json` config, global and project, with named panels, `defaultPanel`, per-panel and judge reasoning, temperature, token budgets, panel tool selection and consent.
-- Two model backends: `claude/*` via `claude -p` on the user's Claude Code login, `openrouter/*` via the OpenRouter HTTP API.
+- Model backends: `claude/*` via `claude -p` on the user's Claude Code login, `openrouter/*` via the OpenRouter HTTP API, and (added later) `codex/*` via `codex exec` on a ChatGPT login.
 - Judge on either backend. Structured output via `--json-schema` on the Claude backend, `extractJson` on OpenRouter.
 - Session modes `available` (default), `forced`, `off`. `/fusion <prompt>` forces once. `/fusion <panel-name>` arms a named panel for the next fusion call.
 - Panel tools for Claude panelists only: `readonly` = `Read,Grep,Glob`; `all` adds `Bash,Edit,Write` behind `panelToolsConsent` and serialises the panel.
@@ -50,6 +50,8 @@ claude-fusion/
 │   ├── backends/
 │   │   ├── types.ts           Backend interface, ModelRef
 │   │   ├── claude.ts          spawn claude -p
+│   │   ├── codex.ts           spawn codex exec
+│   │   ├── spawn.ts           shared child-process loop for the CLI backends
 │   │   ├── openrouter.ts      fetch chat/completions, models cache
 │   │   └── registry.ts        parse ids, pick backend, contextWindow lookup
 │   ├── fusion.ts              copied, Model<Api> → ModelRef, llm calls → backend
@@ -77,12 +79,13 @@ Install for development: `claude --plugin-dir /home/dev/code/active/claude-fusio
 A model id is `<backend>/<rest>`:
 
 - `claude/<model>`: `<model>` is passed verbatim to `claude -p --model`, so aliases (`opus`, `sonnet`, `haiku`) and full ids both work.
+- `codex/<model>`: `<model>` is passed verbatim to `codex exec --model`.
 - `openrouter/<vendor>/<model>`: `<vendor>/<model>` is the OpenRouter model id.
 
 `registry.ts` exports `parseModelRef(id): ModelRef | undefined` and `modelDisplay(ref)` (the original string). Unknown backend prefix or an empty remainder is an "Unknown model identifier" warning, as in pi-fusion. There is no auth check at resolution time. Auth failures surface as per-model errors at call time and the existing degradation handles them.
 
 ```ts
-interface ModelRef { backend: "claude" | "openrouter"; model: string; display: string }
+interface ModelRef { backend: "claude" | "codex" | "openrouter"; model: string; display: string }
 
 interface CallOptions {
 	systemPrompt: string;
@@ -138,6 +141,18 @@ Tools: `readonly` → `Read,Grep,Glob`; `all` → `Read,Grep,Glob,Bash,Edit,Writ
 Cancellation: `signal` kills the child with SIGTERM. A `timeoutSeconds` config (default 600) aborts the signal per call.
 
 Nested execution: verified in this session that `claude -p` runs from inside a Claude Code session with `CLAUDECODE` set and bills the subscription.
+
+### Codex backend (added after the initial spec)
+
+`codex/<model>` spawns `codex exec` on the user's ChatGPT login (Codex CLI 0.154 verified). It exists so an OpenAI panelist can run on a Plus or Pro subscription; `openrouter/openai/<model>` remains the route for anyone with OpenRouter credit, and both forms are plain model ids in the panel.
+
+Invocation: `codex exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check --sandbox read-only --model <model> -c model_instructions_file=<tmp>/system.md [-c model_reasoning_effort=<level>] [--output-schema <tmp>/schema.json] -` with the user text on stdin. The CLI has no system-prompt or schema flag, so both are written to a `mkdtemp` directory removed after the call. `--ignore-user-config` drops the user's default model, MCP servers and hooks, the same trimming done by flags for Claude; `model_instructions_file` also replaces the stock Codex instructions, which cut a "pong" call from 15k to under 10k input tokens.
+
+Output parsing: the last `item.completed` event with `item.type === "agent_message"` is the answer. `turn.failed` (its `error.message` carries auth and unsupported-model errors) or a non-zero exit throws; no message at all throws. `item.type === "error"` items are non-fatal notices and become `CallResult.warnings`. Schema output is left as text for `extractJson`, as on OpenRouter.
+
+Tools: `supportsTools: false`. `codex exec` has no per-tool allowlist and no turn cap, so `maxToolCalls` could not be honoured. Reasoning: `minimal` downgrades to `low` with a warning; the rest pass through and an unsupported level surfaces the CLI's error. Context window is a constant 272 000 (every model in the CLI's cache reports it).
+
+Both CLI backends share `spawn.ts` (`runCli`, `buildChildEnv`, `abortError`).
 
 ### OpenRouter backend
 
