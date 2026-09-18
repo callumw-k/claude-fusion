@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { modelDisplay } from "./backends/registry.ts";
 import { configPaths, generateConfigExample, loadConfigWithPath } from "./config.ts";
 import { resolveFusionSelection } from "./fusion.ts";
-import { clearState, readState, resolveSessionId, writeCurrentSession, writeState, type SessionState } from "./state.ts";
+import { clearState, readState, resolveSessionId, stateDir, writeCurrentSession, writeState, type SessionState } from "./state.ts";
 import { clampMaxToolCalls, selectionLabel } from "./tools.ts";
 import type { FusionConfig, FusionMode } from "./types.ts";
 
@@ -123,6 +123,23 @@ export function readArgument(argv: string[], stdinText: string): string {
 	return (argv.length ? argv.join(" ") : stdinText).trim();
 }
 
+export function hookOutput(event: string | undefined, input: HookInput, dir: string = stateDir()): Record<string, unknown> | undefined {
+	const sessionId = input.session_id;
+	if (!sessionId) return undefined;
+	const name = event ?? input.hook_event_name;
+	try {
+		if (name === "SessionEnd") {
+			clearState(sessionId, dir);
+			return undefined;
+		}
+		writeCurrentSession(sessionId, dir);
+		const state = readState(sessionId, dir);
+		return name === "UserPromptSubmit" ? userPromptSubmitHook(input, state) : name === "PreToolUse" ? preToolUseHook(state) : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 async function runHook(event: string | undefined): Promise<void> {
 	let input: HookInput = {};
 	try {
@@ -130,16 +147,7 @@ async function runHook(event: string | undefined): Promise<void> {
 	} catch {
 		return;
 	}
-	const sessionId = input.session_id;
-	if (!sessionId) return;
-	const name = event ?? input.hook_event_name;
-	if (name === "SessionEnd") {
-		clearState(sessionId);
-		return;
-	}
-	writeCurrentSession(sessionId);
-	const state = readState(sessionId);
-	const output = name === "UserPromptSubmit" ? userPromptSubmitHook(input, state) : name === "PreToolUse" ? preToolUseHook(state) : undefined;
+	const output = hookOutput(event, input);
 	if (output) process.stdout.write(JSON.stringify(output));
 }
 

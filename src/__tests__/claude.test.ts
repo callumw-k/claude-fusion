@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { buildChildEnv, buildClaudeArgs, claudeReasoning, createClaudeBackend, parseClaudeOutput, type SpawnLike } from "../backends/claude.ts";
+import { abortError, buildChildEnv, buildClaudeArgs, claudeReasoning, createClaudeBackend, parseClaudeOutput, type SpawnLike } from "../backends/claude.ts";
 import type { CallOptions } from "../backends/types.ts";
 import { parseModelRef } from "../backends/registry.ts";
 import { eq, test } from "./_harness.ts";
@@ -22,6 +22,7 @@ function fakeSpawn(stdout?: string): FakeSpawn {
 		child.stdin = Object.assign(new EventEmitter(), { end() {} });
 		child.kill = (signal: string) => {
 			record.kills.push(signal);
+			setImmediate(() => child.emit("close", null));
 			return true;
 		};
 		if (stdout !== undefined) {
@@ -161,4 +162,31 @@ test("parseClaudeOutput keeps a max-turns answer as a capped success", () => {
 		text: "final answer",
 		tools: { turns: 2, tool_calls: [], capped: false },
 	}, "a stream-json success uses the result text, not the running commentary");
+});
+
+test("a timed-out claude child rejects with timed out, a plain abort with cancelled", async () => {
+	const keepAlive = setTimeout(() => {}, 5000);
+	const timedOut = fakeSpawn();
+	const timeoutError = await createClaudeBackend(timedOut.spawn)
+		.call(ref, options({ signal: AbortSignal.any([AbortSignal.timeout(10)]) }))
+		.then(() => undefined, (err: Error) => err);
+	clearTimeout(keepAlive);
+	eq(timeoutError?.message, "timed out", "timeout reason is named");
+	eq(timedOut.kills, ["SIGTERM"], "child killed on timeout");
+	const controller = new AbortController();
+	const cancelled = fakeSpawn();
+	const pending = createClaudeBackend(cancelled.spawn)
+		.call(ref, options({ signal: controller.signal }))
+		.then(() => undefined, (err: Error) => err);
+	controller.abort();
+	eq((await pending)?.message, "cancelled", "manual abort stays cancelled");
+	eq(abortError(undefined).message, "cancelled", "no signal means cancelled");
+});
+
+test("buildChildEnv strips the OpenRouter key and the parent session id", () => {
+	const env = buildChildEnv({ PATH: "/bin", OPENROUTER_API_KEY: "sk-secret", CLAUDE_CODE_SESSION_ID: "parent", HOME: "/h" });
+	eq(env, { PATH: "/bin", HOME: "/h" }, "only the two keys are removed");
+	const original = { OPENROUTER_API_KEY: "sk-secret" };
+	buildChildEnv(original);
+	eq(original.OPENROUTER_API_KEY, "sk-secret", "input env is not mutated");
 });

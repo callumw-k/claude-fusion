@@ -113,8 +113,17 @@ export function parseClaudeOutput(
 	};
 }
 
+const CHILD_ENV_STRIPPED = ["OPENROUTER_API_KEY", "CLAUDE_CODE_SESSION_ID"];
+
 export function buildChildEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-	return { ...env };
+	const child = { ...env };
+	for (const key of CHILD_ENV_STRIPPED) delete child[key];
+	return child;
+}
+
+export function abortError(signal: AbortSignal | undefined): Error {
+	const reason = signal?.reason as { name?: string } | undefined;
+	return new Error(reason?.name === "TimeoutError" ? "timed out" : "cancelled");
 }
 
 function runClaude(spawnImpl: SpawnLike, ref: ModelRef, options: CallOptions): Promise<CallResult> {
@@ -142,7 +151,7 @@ function runClaude(spawnImpl: SpawnLike, ref: ModelRef, options: CallOptions): P
 		child.on("close", (code) => {
 			cleanup();
 			if (options.signal?.aborted) {
-				reject(new Error("cancelled"));
+				reject(abortError(options.signal));
 				return;
 			}
 			try {

@@ -1,5 +1,6 @@
 import {
 	compactFusionToolText,
+	disabledFusionResult,
 	emptyPanelError,
 	parseFusionAnalysis,
 	resolveFusionSelection,
@@ -211,4 +212,13 @@ test("runFusion treats blank panel output as failure and honours the armed profi
 	eq(armed.details.panel_profile, "alt", "armed profile used");
 	eq(openrouter.calls.map((c) => c.model), ["a/b", "c/d", "a/b"], "two panelists then judge");
 	eq(claude.calls.length, 1, "legacy panel not used for the armed run");
+});
+
+test("disabledFusionResult carries failure_reason like every other error result", () => {
+	const result = disabledFusionResult();
+	eq(result.details.status, "error", "status");
+	const text = JSON.parse(result.content[0].text) as Record<string, unknown>;
+	eq(text.error, "fusion disabled", "error text");
+	eq(text.failure_reason, "unexpected_error", "failure_reason present in the tool text");
+	eq(text.status, "error", "status in text");
 });

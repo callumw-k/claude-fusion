@@ -69,6 +69,10 @@ function fusionToolResult(details: FusionDetails): FusionResult {
 	return { content: [{ type: "text", text: compactFusionToolText(details) }], details };
 }
 
+export function disabledFusionResult(): FusionResult {
+	return fusionToolResult({ status: "error", responses: [], error: "fusion disabled", failure_reason: "unexpected_error" });
+}
+
 export function emptyPanelError(content: string, capped: boolean): string | undefined {
 	if (content.trim()) return undefined;
 	return capped ? "no text answer (tool-call budget or loop guard hit)" : "empty response";

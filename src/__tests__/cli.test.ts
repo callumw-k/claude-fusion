@@ -1,9 +1,10 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	FORCE_CONTEXT,
 	fusionCommand,
+	hookOutput,
 	initCommand,
 	parseModeWord,
 	preToolUseHook,
@@ -12,7 +13,7 @@ import {
 	userPromptSubmitHook,
 	type CommandContext,
 } from "../cli.ts";
-import type { SessionState } from "../state.ts";
+import { readState, writeState, type SessionState } from "../state.ts";
 import type { FusionConfig } from "../types.ts";
 import { eq, test } from "./_harness.ts";
 
@@ -116,4 +117,23 @@ test("preToolUseHook denies only when off", () => {
 			permissionDecisionReason: "Fusion is off for this session. Use /fusion available or /fusion on to re-enable it.",
 		},
 	}, "off denies");
+});
+
+test("hookOutput swallows state I/O failures and reads state from the given directory", () => {
+	const dir = mkdtempSync(join(tmpdir(), "claude-fusion-hook-"));
+	try {
+		const blocked = join(dir, "not-a-dir");
+		writeFileSync(blocked, "file in the way");
+		eq(hookOutput("UserPromptSubmit", { session_id: "s1", prompt: "hi" }, blocked), undefined, "unwritable state dir yields no output instead of throwing");
+		eq(hookOutput("SessionEnd", { session_id: "s1" }, blocked), undefined, "session end on a broken dir is silent");
+		eq(hookOutput("PreToolUse", {}, dir), undefined, "no session id, no output");
+		eq(hookOutput("UserPromptSubmit", { session_id: "s1", prompt: "hi" }, dir), undefined, "fresh session is available, nothing added");
+		eq(readFileSync(join(dir, "current-session"), "utf8"), "s1", "pointer written");
+		writeState("s1", { mode: "off" }, dir);
+		eq(hookOutput(undefined, { session_id: "s1", hook_event_name: "PreToolUse" }, dir)?.hookSpecificOutput, preToolUseHook({ mode: "off" })?.hookSpecificOutput, "event name falls back to the stdin field");
+		hookOutput("SessionEnd", { session_id: "s1" }, dir);
+		eq(readState("s1", dir), { mode: "available" }, "session end clears the state");
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
 });

@@ -8,7 +8,7 @@ import { createOpenRouterBackend } from "./backends/openrouter.ts";
 import type { Backends } from "./backends/types.ts";
 import { loadConfig } from "./config.ts";
 import { formatResult } from "./format.ts";
-import { runFusion } from "./fusion.ts";
+import { disabledFusionResult, runFusion } from "./fusion.ts";
 import { consumeArmedPanel, readState, resolveSessionId } from "./state.ts";
 import type { FusionResult } from "./types.ts";
 
@@ -30,14 +30,9 @@ type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 const backends: Backends = { claude: createClaudeBackend(), openrouter: createOpenRouterBackend() };
 const projectDir = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
 
-function disabledResult(): FusionResult {
-	const details = { status: "error" as const, responses: [], error: "fusion disabled", failure_reason: "unexpected_error" as const };
-	return { content: [{ type: "text", text: JSON.stringify({ status: "error", error: "fusion disabled" }, null, 2) }], details };
-}
-
 async function execute(prompt: string, extra: Extra): Promise<FusionResult> {
 	const sessionId = resolveSessionId();
-	if (sessionId && readState(sessionId).mode === "off") return disabledResult();
+	if (sessionId && readState(sessionId).mode === "off") return disabledFusionResult();
 	const armed = sessionId ? consumeArmedPanel(sessionId) : undefined;
 	const token = extra._meta?.progressToken;
 	let step = 0;
