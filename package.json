@@ -1,0 +1,29 @@
+{
+	"name": "claude-fusion",
+	"version": "0.1.0",
+	"description": "Multi-model deliberation plugin for Claude Code, ported from pi-fusion",
+	"type": "module",
+	"private": true,
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/callumw-k/claude-fusion.git"
+	},
+	"engines": {
+		"node": ">=22.18.0"
+	},
+	"scripts": {
+		"check": "tsc --noEmit",
+		"check:strict": "tsc --noEmit --noUnusedLocals --noUnusedParameters",
+		"test": "for f in src/__tests__/*.test.ts; do node \"$f\" || exit 1; done",
+		"validate": "claude plugin validate ."
+	},
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.29.0",
+		"zod": "^3.25.0"
+	},
+	"devDependencies": {
+		"@types/node": "^22.0.0",
+		"typescript": "^5.8.0"
+	}
+}
