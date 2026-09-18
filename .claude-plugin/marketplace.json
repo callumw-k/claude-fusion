@@ -1,0 +1,11 @@
+{
+	"name": "claude-fusion",
+	"owner": { "name": "callumw-k" },
+	"plugins": [
+		{
+			"name": "claude-fusion",
+			"source": "./",
+			"description": "Multi-model deliberation: run a prompt against a panel of models and get a judge's structured comparison."
+		}
+	]
+}

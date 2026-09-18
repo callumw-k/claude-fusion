@@ -1,0 +1,10 @@
+{
+	"name": "claude-fusion",
+	"version": "0.1.0",
+	"description": "Multi-model deliberation: run a prompt against a panel of models and get a judge's structured comparison.",
+	"author": { "name": "callumw-k" },
+	"repository": "https://github.com/callumw-k/claude-fusion",
+	"license": "MIT",
+	"keywords": ["fusion", "multi-model", "openrouter", "deliberation"],
+	"mcpServers": "./.mcp.json"
+}
